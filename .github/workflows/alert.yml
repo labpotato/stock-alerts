@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'test = test message with a sample chart, digest = send the full list once, poll = normal'
+        description: 'test = sample chart, digest = full list once, buy-watch = tickers close to a BUY, poll = normal'
         type: choice
         default: test
-        options: [test, digest, poll]
+        options: [test, digest, buy-watch, poll]
 permissions:
   contents: write
 concurrency:

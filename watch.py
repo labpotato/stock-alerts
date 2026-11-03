@@ -153,8 +153,16 @@ def settled_rows(t):
         return None
     sess = session_of(meta)
     today_x = dt.datetime.fromtimestamp(time.time() + off, dt.timezone.utc).date()
-    # Today's bar (exchange time) is still forming while any session is open.
-    if dates[-1] == today_x and sess in ("PRE", "REGULAR", "POST"):
+    mt = meta.get("regularMarketTime")
+    last_session = day(mt) if mt is not None else None
+    # The live price always stands in for the CURRENT session's bar, so that bar is removed here:
+    #  - market open (pre, regular, after hours): today's bar, which is still forming;
+    #  - market shut: the most recent session's bar, because the live price IS that session.
+    # Keeping it while shut would count the same close twice and shift every reading.
+    if sess in ("PRE", "REGULAR", "POST"):
+        if dates[-1] == today_x:
+            rows, dates = rows[:-1], dates[:-1]
+    elif last_session is not None and dates[-1] == last_session:
         rows, dates = rows[:-1], dates[:-1]
     if len(rows) < 40:
         return None
@@ -455,6 +463,48 @@ def mixed_message(o, sess):
     return "\n".join(lines), png
 
 
+def near_buy_message(o, sess, lvl, leg):
+    t, ev = o["t"], o["ev"]
+    pct = (lvl / ev["px"] - 1) * 100
+    if leg == "k":
+        how = (f"<b>Price range:</b> its 3-day average price (${ev['ma3']:,.2f}) is at or below the bottom of "
+               f"its normal range (${ev['lo']:,.2f}), which is unusually low for it. If the price climbs to "
+               f"<b>${lvl:,.2f}</b>, the 3-day average lifts back above the bottom. That recovery is your buy signal.")
+        other = f"Momentum is {leg_state('r', ev)}."
+    else:
+        how = (f"<b>Momentum:</b> its score is {ev['rsi']:.0f}, below 30, so it has been sold off hard. If the "
+               f"price climbs to <b>${lvl:,.2f}</b>, the score recovers above 30. That is your buy signal.")
+        other = f"Price range: {leg_state('k', ev)}."
+    lines = [f"🔵 <b>Close to a BUY — {t}</b>", esc(full_name(t, o)),
+             f"<b>${ev['px']:,.2f}</b> · {when_text()} · {SESSION_PLAIN.get(sess, sess)}", "",
+             f"<b>Not a signal yet.</b> A BUY appears if the price reaches <b>${lvl:,.2f}</b> "
+             f"({pct:+.1f}% from now).", "", how, "", other, "",
+             f"<b>If it happens, your plan:</b> {plan_text(t, 'BUY')}", "",
+             "<i>Sent because you asked. Nothing has been traded.</i>"]
+    png = price_chart(t, full_name(t, o), o["d"], ev, f"Close to a BUY: {pct:+.1f}% away", "#1565c0",
+                      "not a signal yet", target=lvl, target_label="BUY if it reaches")
+    return "\n".join(lines), png
+
+
+def near_buy(rows, sess):
+    """On request: one message per ticker within reach of a BUY, nearest first."""
+    lim = CFG.get("near_pct", 5.0)
+    cand = []
+    for o in rows:
+        for leg, key in (("k", "K"), ("r", "R")):
+            lvl = (o.get("tb") or {}).get(key)
+            if lvl is not None and 0 <= (lvl / o["px"] - 1) * 100 <= lim:
+                cand.append((lvl / o["px"] - 1, o, lvl, leg))
+    best = {}
+    for c in sorted(cand, key=lambda x: x[0]):
+        best.setdefault(c[1]["t"], c)
+    out = [near_buy_message(o, sess, lvl, leg) for _, o, lvl, leg in sorted(best.values(), key=lambda x: x[0])]
+    if not out:
+        out = [(f"🔵 <b>Close to a BUY</b>\n{when_text()} · {SESSION_PLAIN.get(sess, sess)}\n\n"
+                f"No ticker is within {lim:.0f}% of a BUY right now.\n\n<i>Sent because you asked.</i>", None)]
+    return out
+
+
 # ---------------------------------------------------------------- unusual movement
 def anomalies(rows, bench):
     """Each finding is its own message: dict(key, kind, ticker, text)."""
@@ -646,7 +696,7 @@ def _ticks(ax, dates, n):
     ax.set_xticklabels(lab + ["now"], fontsize=8)
 
 
-def price_chart(t, name, d, ev, headline, color, note, shade=0):
+def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, target_label=""):
     """Top: price, its normal range (shaded) and 3-day average. Bottom: momentum score."""
     h = d.get("hist")
     plt = mpl() if h else None
@@ -669,6 +719,10 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0):
         ax.plot([xs[-1], xt], [h["c"][-1], ev["px"]], color="#263238", lw=1.4, ls=":")
         if shade:
             ax.axvspan(xt - shade - 0.5, xt + 0.5, color=color, alpha=0.10)
+        if target is not None:
+            ax.axhline(target, color=color, ls="--", lw=1.2)
+            ax.text(xs[len(xs) // 3], target, f" {target_label} ${target:,.2f} ", color=color, fontsize=9,
+                    fontweight="bold", va="bottom", bbox=dict(fc="white", ec="none", alpha=0.8, pad=1))
         ax.scatter([xt], [ev["px"]], s=130, color=color, zorder=6, edgecolor="white", linewidth=1.8)
         lo_y, hi_y = min(lo + h["c"]), max(up + h["c"])
         above = ev["px"] > (lo_y + hi_y) / 2
@@ -681,6 +735,9 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0):
         ax.text(0, 1.02, f"{headline}  ·  {note}", transform=ax.transAxes, fontsize=11,
                 color=color, fontweight="bold")
         ax.legend(loc="upper left", fontsize=8, frameon=False, ncol=3)
+        if target is not None:   # keep the target line on the chart even if it is outside recent prices
+            y0, y1 = ax.get_ylim()
+            ax.set_ylim(min(y0, target * 0.99), max(y1, target * 1.01))
         ax.set_ylabel("price ($)")
         ax.grid(alpha=0.18)
         ax.margins(x=0.02)
@@ -863,12 +920,12 @@ def poll(state):
         state.clear()
         state.update({"day": today, "sent": [], "pending": {}, "obs": keep or {}})
     state.setdefault("obs", {})
-    want_list = MODE == "digest"          # the full list is sent only when you ask for it
+    want_list = MODE in ("digest", "buy-watch")   # only when you ask for it
     if sess == "CLOSED" and not want_list:
         print("market CLOSED, nothing to do (1 call)")
         return None, sess, []
 
-    cache, fresh, cerrs = build_cache(tickers, today)
+    cache, fresh, cerrs = build_cache(tickers, f"{today}:{'shut' if sess == 'CLOSED' else 'open'}")
     rows, errs = [], list(cerrs)
     for t in tickers:
         d = cache.get(t)
@@ -990,7 +1047,8 @@ def main():
     if MODE == "test":
         try:
             lv = live(CFG["benchmark"])
-            cache, fresh, errs = build_cache([CFG["benchmark"]], lv.get("edate"))
+            cache, fresh, errs = build_cache([CFG["benchmark"]],
+                                             f"{lv.get('edate')}:{'shut' if lv['sess'] == 'CLOSED' else 'open'}")
             d = cache[CFG["benchmark"]]
             ev = evaluate(d, lv["px"], lv["hi"], lv["lo"])
             msg = (f"{full_name(CFG['benchmark'])} is at ${lv['px']:,.2f}. "
@@ -1028,8 +1086,12 @@ def main():
     for text, png in outbox:
         notify(text, png)
         time.sleep(0.7)
-    if want_list:
+    if MODE == "digest":
         send(digest(rows, sess, alerts))
+    if MODE == "buy-watch":
+        for text, png in near_buy(rows, sess):
+            notify(text, png)
+            time.sleep(0.7)
 
     print(f"session {sess} · {len(rows)} priced · {len(outbox)} message(s) · {len(errs)} error(s)")
     for e in errs[:10]:

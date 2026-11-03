@@ -68,5 +68,6 @@
     "XLB": "Materials Select Sector SPDR ETF",
     "XLP": "Consumer Staples Select Sector SPDR ETF"
   },
-  "_names_note": "Verified against Shibui general_info, 2026-11-03. ITA is not listed there, so its name is read live from Yahoo."
+  "_names_note": "Verified against Shibui general_info, 2026-11-03. ITA is not listed there, so its name is read live from Yahoo.",
+  "near_pct": 5.0
 }
