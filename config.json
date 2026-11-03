@@ -46,10 +46,27 @@
     "group_vs_bench_1d_pts": 2.5,
     "group_vs_bench_5d_pts": 4.0,
     "breadth_frac": 0.7,
-    "breadth_move_pct": 2.0,
-    "collapse_run_at": 3
+    "breadth_move_pct": 2.0
   },
   "pages_url": "https://labpotato.github.io/stock-alerts/",
   "cross_reference": "last_poll",
-  "confirm_thin_extended": true
+  "confirm_thin_extended": true,
+  "names": {
+    "VOO": "Vanguard 500 Index Fund ETF (tracks the S&P 500)",
+    "GOOGL": "Alphabet Inc. (Google), Class A",
+    "NVDA": "NVIDIA Corp",
+    "TSLA": "Tesla Inc",
+    "PLTR": "Palantir Technologies Inc., Class A",
+    "SOXX": "iShares Semiconductor ETF",
+    "BE": "Bloom Energy Corp, Class A",
+    "AIPO": "Defiance AI & Power Infrastructure ETF",
+    "BOTZ": "Global X Robotics & Artificial Intelligence ETF",
+    "XLV": "Health Care Select Sector SPDR ETF",
+    "XLF": "Financial Select Sector SPDR ETF",
+    "GLDM": "SPDR Gold MiniShares Trust",
+    "QQQ": "Invesco QQQ Trust (tracks the Nasdaq-100)",
+    "XLB": "Materials Select Sector SPDR ETF",
+    "XLP": "Consumer Staples Select Sector SPDR ETF"
+  },
+  "_names_note": "Verified against Shibui general_info, 2026-11-03. ITA is not listed there, so its name is read live from Yahoo."
 }

@@ -12,12 +12,19 @@ and is at or below it now. Pre-market and after-hours prices count the same way.
 
 ## What it sends
 
+Every message is about **one ticker** (or one group finding) and comes with a chart.
+
 | When | What |
 |---|---|
-| The live price crosses a BUY/SELL line | Live signal, once per ticker per side per day |
-| A move is large against that ticker's own recent range | Unusual-movement alert |
-| The AI group separates from VOO, or breadth collapses | Group / rotation alert |
-| After the post-market close, once a day | The full visual watchlist, grouped by state |
+| A measure gives a BUY or SELL at the live price | One message: ticker, full name, price at that moment, which of the two measures agree (e.g. SELL + SELL → STRONG SELL), the reasons in plain words, what your plan says, and a chart |
+| A ticker moves far more than it usually does | One "unusual move" message with a chart |
+| Your AI stocks split from the S&P 500, or most of the list falls together | One group message with a bar chart |
+
+The full list is **not** sent automatically. Run the workflow with `digest` if you want it once.
+
+**No repeats.** Each measure can give a BUY or SELL for a ticker once per trading day. If both give
+it at the same moment you get one STRONG message; if the second agrees later the same day you get one
+upgrade to STRONG, and then nothing more for that ticker and side until the next trading day.
 
 ## Coverage
 

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'test = send a test message, digest = send the watchlist now, poll = normal'
+        description: 'test = test message with a sample chart, digest = send the full list once, poll = normal'
         type: choice
         default: test
         options: [test, digest, poll]
