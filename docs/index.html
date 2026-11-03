@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stock Alerts</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--line:#e5e7eb;--hd:#3c4043;--buy:#0f7b3f;--sell:#b3261e;--wb:#1a73e8;--ws:#b26a00;--card:#fafafa}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#15171a;--fg:#e8e8e8;--mut:#9aa0a6;--line:#2c3034;--hd:#23262b;--buy:#4ade80;--sell:#f87171;--wb:#7cb3ff;--ws:#e0a33e;--card:#1b1e22}}
+:root[data-theme=dark]{--bg:#15171a;--fg:#e8e8e8;--mut:#9aa0a6;--line:#2c3034;--hd:#23262b;--buy:#4ade80;--sell:#f87171;--wb:#7cb3ff;--ws:#e0a33e;--card:#1b1e22}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:20px 16px 56px}
+h1{font-size:20px;margin:0 0 2px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:18px}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;background:var(--card);border:1px solid var(--line)}
+.pill.open{color:var(--buy);border-color:var(--buy)}
+.pill.ext{color:var(--ws);border-color:var(--ws)}
+h2{font-size:14px;letter-spacing:.04em;text-transform:uppercase;margin:26px 0 8px;color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:var(--hd);color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.05em;text-align:right;padding:7px 8px}
+th:first-child{text-align:left}
+td{padding:8px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+td:first-child{text-align:left;font-weight:600}
+.tk{color:var(--mut);font-weight:400;font-size:12px}
+.up{color:var(--buy)}.dn{color:var(--sell)}
+.b-BUY{color:var(--buy)}.b-SELL{color:var(--sell)}
+.b-WATCHBUY{color:var(--wb)}.b-WATCHSELL{color:var(--ws)}
+.note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ws);padding:10px 12px;border-radius:6px;font-size:13px;margin:14px 0}
+.foot{color:var(--mut);font-size:12px;margin-top:30px;border-top:1px solid var(--line);padding-top:12px}
+.quiet{color:var(--mut);font-size:13px}
+@media(max-width:520px){th,td{padding:6px 5px;font-size:13px}.hide-s{display:none}}
+</style>
+<div class="wrap">
+  <h1>Stock Alerts</h1>
+  <div class="sub" id="sub">loading…</div>
+  <div id="warn"></div>
+  <div id="body"></div>
+  <div class="note">Real-time states, including pre-market and after-hours. A signal is a cross between
+  two consecutive readings about 10 minutes apart. Nothing here is an instruction and nothing is traded.
+  Share counts and order sizes are deliberately not published on this page.</div>
+  <div class="foot">Machine-readable feed: <a href="status.json">status.json</a>.
+  Rebuilt by a GitHub Actions job while US markets are open, including pre- and post-market.</div>
+</div>
+<script>
+const ORDER=["BUY","SELL","WATCH SELL","WATCH BUY"];
+const cls=s=>"b-"+s.replace(/ /g,"");
+const pc=v=>(v>0?"+":"")+v.toFixed(2)+"%";
+fetch("status.json?"+Date.now()).then(r=>r.json()).then(d=>{
+  const s=d.session||"?";
+  const lab={PRE:"pre-market",REGULAR:"market open",POST:"after hours",CLOSED:"market closed"}[s]||s;
+  const k=s==="REGULAR"?"open":(s==="CLOSED"?"":"ext");
+  document.getElementById("sub").innerHTML=
+    `<span class="pill ${k}">${lab}</span> &nbsp; built ${d.generated_utc} UTC &nbsp;·&nbsp; `+
+    `last settled close ${d.settled_close_date||"—"}`;
+  if((d.anomalies||[]).length)
+    document.getElementById("warn").innerHTML=
+      `<div class="note"><b>Unusual movement</b><br>`+d.anomalies.map(a=>"• "+a).join("<br>")+`</div>`;
+  const ts=d.tickers||{}, buck={};
+  for(const [t,v] of Object.entries(ts)){
+    let b="QUIET";
+    for(const o of ORDER) if(v.keltner===o||v.momentum===o){b=o;break}
+    (buck[b]=buck[b]||[]).push([t,v]);
+  }
+  let h="";
+  for(const name of ORDER){
+    const rows=buck[name]; if(!rows) continue;
+    rows.sort((a,b)=>Math.abs(a[1].nearest_trigger_pct??999)-Math.abs(b[1].nearest_trigger_pct??999));
+    h+=`<h2 class="${cls(name)}">${name} — ${rows.length}</h2><table><tr>`+
+       `<th>Ticker</th><th>Price</th><th>Day</th><th>RSI</th><th>To trigger</th>`+
+       `<th class="hide-s">Lower</th><th class="hide-s">Upper</th></tr>`;
+    for(const [t,v] of rows){
+      const n=v.nearest_trigger_pct;
+      h+=`<tr><td>${t}<br><span class="tk">${v.keltner} / ${v.momentum}</span></td>`+
+         `<td>${v.price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>`+
+         `<td class="${v.day_pct>=0?"up":"dn"}">${pc(v.day_pct)}</td><td>${v.rsi.toFixed(0)}</td>`+
+         `<td>${n===null||n===undefined?"—":pc(n)}</td>`+
+         `<td class="hide-s">${v.lower.toFixed(2)}</td><td class="hide-s">${v.upper.toFixed(2)}</td></tr>`;
+    }
+    h+="</table>";
+  }
+  if(buck.QUIET) h+=`<h2>Quiet — ${buck.QUIET.length}</h2><div class="quiet">`+
+      buck.QUIET.map(x=>x[0]).sort().join(", ")+`</div>`;
+  if((d.errors||[]).length) h+=`<h2>Not priced</h2><div class="quiet">`+
+      d.errors.map(e=>e.replace(/</g,"&lt;")).join("<br>")+`</div>`;
+  document.getElementById("body").innerHTML=h;
+}).catch(e=>{document.getElementById("sub").textContent="could not load status.json: "+e});
+</script>

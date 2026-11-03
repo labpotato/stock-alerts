@@ -1,0 +1,55 @@
+{
+  "_note": "Public file. Holdings, targets and order sizes live in the HOLDINGS_JSON repository secret, never here.",
+  "tickers": [
+    "VOO",
+    "GOOGL",
+    "NVDA",
+    "TSLA",
+    "PLTR",
+    "SOXX",
+    "BE",
+    "AIPO",
+    "BOTZ",
+    "XLV",
+    "XLF",
+    "ITA",
+    "GLDM",
+    "QQQ",
+    "XLB",
+    "XLP"
+  ],
+  "ai_group": [
+    "GOOGL",
+    "NVDA",
+    "SOXX",
+    "TSLA",
+    "PLTR",
+    "BE",
+    "AIPO",
+    "BOTZ"
+  ],
+  "ai_cap_pct": 30,
+  "benchmark": "VOO",
+  "thin": [
+    "AIPO",
+    "BOTZ",
+    "GLDM",
+    "ITA",
+    "XLB",
+    "XLP"
+  ],
+  "anomaly": {
+    "sigma_single": 3.0,
+    "sigma_single_with_abs": 2.5,
+    "abs_floor_pct": 4.0,
+    "sigma_run3": 5.5,
+    "group_vs_bench_1d_pts": 2.5,
+    "group_vs_bench_5d_pts": 4.0,
+    "breadth_frac": 0.7,
+    "breadth_move_pct": 2.0,
+    "collapse_run_at": 3
+  },
+  "pages_url": "https://labpotato.github.io/stock-alerts/",
+  "cross_reference": "last_poll",
+  "confirm_thin_extended": true
+}

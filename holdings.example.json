@@ -1,0 +1,24 @@
+{
+  "_note": "TEMPLATE ONLY. Real numbers go in the HOLDINGS_JSON repository secret, never in this file.",
+  "_shape": "ai_group_now_pct = the AI group's current share of the book. order = the armed order text; the word BUY or SELL in it decides the direction gate.",
+  "ai_group_now_pct": 0,
+  "as_of": "YYYY-MM-DD",
+  "tickers": {
+    "VOO":  {"shares": 0, "target": 0, "order": "not held"},
+    "GOOGL":{"shares": 0, "target": 0, "order": "not held"},
+    "NVDA": {"shares": 0, "target": 0, "order": "not held"},
+    "TSLA": {"shares": 0, "target": 0, "order": "not held"},
+    "PLTR": {"shares": 0, "target": 0, "order": "not held"},
+    "SOXX": {"shares": 0, "target": 0, "order": "not held"},
+    "BE":   {"shares": 0, "target": 0, "order": "not held"},
+    "AIPO": {"shares": 0, "target": 0, "order": "not held"},
+    "BOTZ": {"shares": 0, "target": 0, "order": "not held"},
+    "XLV":  {"shares": 0, "target": 0, "order": "not held"},
+    "XLF":  {"shares": 0, "target": 0, "order": "not held"},
+    "ITA":  {"shares": 0, "target": 0, "order": "not held"},
+    "GLDM": {"shares": 0, "target": 0, "order": "not held"},
+    "QQQ":  {"shares": 0, "target": 0, "order": "not held"},
+    "XLB":  {"shares": 0, "target": 0, "order": "not held"},
+    "XLP":  {"shares": 0, "target": 0, "order": "not held"}
+  }
+}

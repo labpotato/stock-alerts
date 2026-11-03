@@ -1,0 +1,45 @@
+name: Stock alerts
+on:
+  schedule:
+    # Every 10 minutes. watch.py asks Yahoo which session is live and exits after a
+    # single call when US markets are shut, so a closed-market run is nearly free.
+    # Doing it this way means no cron timezone arithmetic and no US daylight-saving edge.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'test = send a test message, digest = send the watchlist now, poll = normal'
+        type: choice
+        default: test
+        options: [test, digest, poll]
+permissions:
+  contents: write
+concurrency:
+  group: stock-alerts
+  cancel-in-progress: false
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python watch.py
+        env:
+          TG_TOKEN:      ${{ secrets.TG_TOKEN }}
+          TG_CHAT:       ${{ secrets.TG_CHAT }}
+          HOLDINGS_JSON: ${{ secrets.HOLDINGS_JSON }}
+          MODE:          ${{ inputs.mode || 'poll' }}
+      - name: Save state and publish status
+        run: |
+          git config user.name  "stock-alerts"
+          git config user.email "actions@github.com"
+          git add -A state.json bars_cache.json docs/status.json 2>/dev/null || true
+          git diff --staged --quiet && exit 0
+          git commit -q -m "state $(date -u +%F\ %H:%M)"
+          for i in 1 2 3; do
+            git pull --rebase -q origin main && git push -q && exit 0
+            sleep $((i*4))
+          done
+          echo "push failed after 3 tries" >&2; exit 1

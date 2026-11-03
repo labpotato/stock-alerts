@@ -1,0 +1,80 @@
+# stock-alerts
+
+A GitHub Actions job that watches Dongmin's tickers and sends Telegram alerts. It trades nothing.
+
+Rules are **Keltner on MA3** and **RSI 30/70 recross**, applied to **real-time prices**. The bands,
+MA3 and RSI are recalculated at the live price on every reading, and a signal is a cross between two
+consecutive readings: for example a SELL when the price was above the upper band at the last reading
+and is at or below it now. Pre-market and after-hours prices count the same way.
+
+`config.json` → `"cross_reference"` switches the definition: `"last_poll"` (real-time, the default) or
+`"prev_close"` (the older rule, a cross against yesterday's settled close).
+
+## What it sends
+
+| When | What |
+|---|---|
+| The live price crosses a BUY/SELL line | Live signal, once per ticker per side per day |
+| A move is large against that ticker's own recent range | Unusual-movement alert |
+| The AI group separates from VOO, or breadth collapses | Group / rotation alert |
+| After the post-market close, once a day | The full visual watchlist, grouped by state |
+
+## Coverage
+
+Runs every 10 minutes, around the clock. The job asks Yahoo which session is live and exits after a
+single request when US markets are shut, so a closed-market run costs almost nothing. Pre-market
+(04:00 ET) and after-hours (to 20:00 ET) are covered, because those are tradeable.
+
+Liquid names alert on the first reading that crosses, in every session. For the thin ETFs listed under
+`"thin"` in `config.json`, an extended-hours cross is sent only if the next reading is still on the far
+side of the line, so one odd print cannot trigger an alert; an implausible print is discarded outright.
+Each ticker alerts at most once per side per day.
+
+Readings are about 10 minutes apart (GitHub's schedule can slip to 15–20), so a cross that happens and
+reverses between two readings is not seen.
+
+## Secrets (Settings → Secrets and variables → Actions)
+
+| Secret | Value |
+|---|---|
+| `TG_TOKEN` | BotFather token |
+| `TG_CHAT` | Telegram chat id |
+| `HOLDINGS_JSON` | the contents of `holdings.example.json`, edited to the real numbers |
+
+**Share counts, targets and order sizes live only in `HOLDINGS_JSON`.** This repository is public, so
+they must never be committed. `config.json` holds only the ticker list and thresholds, and the
+published dashboard deliberately omits position sizes. Without the secret the job still runs and
+still sends signals; it just says the holdings gate is unavailable instead of "Fires: SELL 7".
+
+Also set **Settings → Actions → General → Workflow permissions → Read and write**, so the job can
+save `state.json`, `bars_cache.json` and `docs/status.json`.
+
+## Dashboard and machine-readable feed
+
+Enable **Settings → Pages → Source: Deploy from a branch → `main` / `/docs`**. That publishes:
+
+- `https://labpotato.github.io/stock-alerts/` — the visual watchlist, grouped by state
+- `https://labpotato.github.io/stock-alerts/status.json` — the same data as JSON
+
+`status.json` is the handoff to the scheduled Claude chats. Both the post-close and the open+1h runs
+can read it with a single WebFetch, at no credit cost, instead of recomputing states or holding a
+stale copy. It carries `generated_utc`, `session` and `settled_close_date`, so a reader can always
+tell how fresh it is.
+
+## Anomaly thresholds
+
+Volatility per ticker is estimated with a **median absolute deviation**, not a standard deviation.
+A standard deviation is inflated by the very outlier it is meant to detect: on 2026-11-02 GOOGL's
+-12.6% day scored only -4.2 sigma on stdev but -7.9 sigma on MAD. Thresholds in `config.json` were
+calibrated against 80 sessions of real data for these 16 names, and fire roughly **once a week** for
+single-day moves and **once a week** for three-session slides. Several names sliding together are
+collapsed into one message rather than one alert each.
+
+## Testing and upkeep
+
+- **Actions → Stock alerts → Run workflow**, `mode: test` sends a test message; `mode: digest`
+  sends the watchlist immediately whatever the market is doing.
+- Edit `config.json` to change the ticker list or thresholds. Update the `HOLDINGS_JSON` secret
+  whenever Plan v2 changes, or the "Fires:" line goes stale.
+- If every price fetch fails the job exits non-zero, so GitHub emails you. Silence means no signal,
+  which is the normal case most days.
