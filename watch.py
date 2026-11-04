@@ -430,13 +430,28 @@ def order_plain(order):
     return f"{'buy' if m.group(1) == 'BUY' else 'sell'} {m.group(2)} shares"
 
 
+CURRENCY = {"USD": "US dollars", "SGD": "Singapore dollars", "KRW": "Korean won"}
+
+
+def fx_action(t, side):
+    """Which money to change into which. BUY on 'USD->SGD' means USD is cheap: turn SGD into USD.
+    SELL means USD is expensive: turn USD into SGD. Mirror pairs therefore give the same instruction."""
+    b, q = FX[t]["base"], FX[t]["quote"]
+    frm, to = (q, b) if side == "BUY" else (b, q)
+    return frm, to
+
+
+def fx_do(t, side):
+    frm, to = fx_action(t, side)
+    return f"👉 <b>Change your {CURRENCY.get(frm, frm)} into {CURRENCY.get(to, to)}</b> ({frm} → {to})"
+
+
 def plan_text(t, side):
     """What your holdings plan says this signal means, in plain words."""
     if is_fx(t):
-        b, q = FX[t]["base"], FX[t]["quote"]
-        if side == "BUY":
-            return f"{b} looks cheap against {q} right now: a good moment to <b>buy {b} with {q}</b>."
-        return f"{b} looks expensive against {q} right now: a good moment to <b>sell {b} for {q}</b>."
+        frm, to = fx_action(t, side)
+        return (f"<b>Change {frm} into {to}.</b> Right now your {CURRENCY.get(frm, frm)} buy more "
+                f"{CURRENCY.get(to, to)} than they usually do.")
     if H is None:
         return "Your holdings aren't loaded, so I can't say whether this triggers an order."
     cf = H["tickers"].get(t)
@@ -511,7 +526,10 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     lines = [f"{icons} <b>{verdict} — {label(t)}</b>",
              esc(full_name(t, o)),
              f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}",
-             "",
+             ""]
+    if is_fx(t):
+        lines += [fx_do(t, side), ""]
+    lines += [
              f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>{verdict}</b>",
              ""]
     for l in ("k", "r"):
@@ -527,10 +545,13 @@ def signal_message(o, side, legs, earlier, sess, held=False):
                      "so prices can jump around more.</i>")
     if held:
         lines.append("<i>Checked on two readings 10 minutes apart, to rule out a one-off odd trade.</i>")
-    lines += [f"<b>Your plan:</b> {plan_text(t, side)}", "", "<i>Alert only. Nothing has been traded.</i>"]
+    lines += [f"<b>{'What it means' if is_fx(t) else 'Your plan'}:</b> {plan_text(t, side)}", "",
+              "<i>Alert only. Nothing has been traded.</i>"]
     note = {"SELL": "fell back inside its normal range" if "k" in legs else "momentum cooled below 70",
             "BUY": "recovered into its normal range" if "k" in legs else "momentum recovered above 30"}[side]
-    png = price_chart(t, full_name(t, o), o["d"], ev, f"{verdict} at {money(t, ev['px'])}",
+    head = (f"{verdict}: change {fx_action(t, side)[0]} into {fx_action(t, side)[1]}" if is_fx(t)
+            else f"{verdict} at {money(t, ev['px'])}")
+    png = price_chart(t, full_name(t, o), o["d"], ev, head,
                       "#2e7d32" if side == "BUY" else "#c62828", note)
     return "\n".join(lines).replace("\n\n\n", "\n\n"), png
 
@@ -542,7 +563,8 @@ def mixed_message(o, sess):
              f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}", "",
              f"Price range <b>{kside}</b> + Momentum <b>{rside}</b>  →  <b>the two measures disagree</b>", "",
              why("k", kside, ref, ev), "", why("r", rside, ref, ev), "",
-             "<b>Your plan:</b> your rules say a mixed signal triggers nothing.", "",
+             ("<b>What it means:</b> the two measures disagree, so <b>don't change money on this one</b>."
+              if is_fx(t) else "<b>Your plan:</b> your rules say a mixed signal triggers nothing."), "",
              "<i>Alert only. Nothing has been traded.</i>"]
     png = price_chart(t, full_name(t, o), o["d"], ev, "MIXED: measures disagree", "#ef6c00",
                       "the two measures point opposite ways")
@@ -565,7 +587,8 @@ def near_buy_message(o, sess, lvl, leg):
              f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}", "",
              f"<b>Not a signal yet.</b> A BUY appears if the price reaches <b>{money(t, lvl)}</b> "
              f"({pct:+.1f}% from now).", "", how, "", other, "",
-             f"<b>If it happens, your plan:</b> {plan_text(t, 'BUY')}", "",
+             (f"<b>If it happens:</b> {fx_do(t, 'BUY')}" if is_fx(t)
+              else f"<b>If it happens, your plan:</b> {plan_text(t, 'BUY')}"), "",
              "<i>Sent because you asked. Nothing has been traded.</i>"]
     png = price_chart(t, full_name(t, o), o["d"], ev, f"Close to a BUY: {pct:+.1f}% away", "#1565c0",
                       "not a signal yet", target=lvl, target_label="BUY if it reaches")
