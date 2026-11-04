@@ -1,43 +1,43 @@
 {
- "generated_utc": "2026-11-04T03:01:37+00:00",
+ "generated_utc": "2026-11-04T03:04:01+00:00",
  "session": "CLOSED",
  "settled_close_date": "2026-11-03",
  "tickers": {
   "USDSGD=X": {
    "label": "USD\u2192SGD",
    "kind": "currency",
-   "price": 1.2792,
+   "price": 1.2794,
    "prev_close": 1.27913,
-   "day_pct": 0.01,
-   "rsi": 51.3,
+   "day_pct": 0.02,
+   "rsi": 51.8,
    "keltner": "NONE",
    "momentum": "NONE",
-   "upper": 1.28621,
-   "lower": 1.27195,
-   "ma3": 1.2788,
+   "upper": 1.28623,
+   "lower": 1.27197,
+   "ma3": 1.27886,
    "buy_trigger": {},
    "sell_trigger": {},
    "nearest_trigger_pct": null,
    "sigma_pct": 0.13,
-   "z": 0.04
+   "z": 0.16
   },
   "SGDUSD=X": {
    "label": "SGD\u2192USD",
    "kind": "currency",
-   "price": 0.7817,
+   "price": 0.781616,
    "prev_close": 0.781781,
-   "day_pct": -0.01,
-   "rsi": 48.5,
+   "day_pct": -0.02,
+   "rsi": 48.2,
    "keltner": "NONE",
    "momentum": "NONE",
-   "upper": 0.786173,
-   "lower": 0.777452,
-   "ma3": 0.781972,
+   "upper": 0.786165,
+   "lower": 0.777444,
+   "ma3": 0.781945,
    "buy_trigger": {},
    "sell_trigger": {},
    "nearest_trigger_pct": null,
    "sigma_pct": 0.129,
-   "z": -0.08
+   "z": -0.16
   },
   "SGDKRW=X": {
    "label": "SGD\u2192KRW",
@@ -60,29 +60,23 @@
   "KRWSGD=X": {
    "label": "KRW\u2192SGD",
    "kind": "currency",
-   "price": 0.001,
-   "prev_close": 0.000951,
-   "day_pct": 5.15,
-   "rsi": 73.6,
-   "keltner": "WATCH SELL",
-   "momentum": "WATCH SELL",
-   "upper": 0.000983652,
-   "lower": 0.000937279,
-   "ma3": 0.000969667,
+   "price": 0.000956105,
+   "prev_close": 0.000951563,
+   "day_pct": 0.48,
+   "rsi": 52.0,
+   "keltner": "NONE",
+   "momentum": "NONE",
+   "upper": 0.000972996,
+   "lower": 0.000940442,
+   "ma3": 0.000955643,
    "buy_trigger": {},
-   "sell_trigger": {
-    "K": 0.000976677,
-    "R": 0.000986663
-   },
-   "nearest_trigger_pct": -1.3,
-   "sigma_pct": 0.472,
-   "z": 10.92
+   "sell_trigger": {},
+   "nearest_trigger_pct": null,
+   "sigma_pct": 0.42,
+   "z": 1.14
   }
  },
- "anomalies": [
-  "Unusual move \u2014 KRW\u2192SGD",
-  "Unusual 3-day rise \u2014 KRW\u2192SGD"
- ],
+ "anomalies": [],
  "errors": [],
  "note": "Real-time states: a signal is a cross between consecutive readings. Nothing is traded.",
  "cross_reference": "last_poll"
