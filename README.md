@@ -26,6 +26,18 @@ The full list is **not** sent automatically. Run the workflow with `digest` if y
 it at the same moment you get one STRONG message; if the second agrees later the same day you get one
 upgrade to STRONG, and then nothing more for that ticker and side until the next trading day.
 
+## Currencies
+
+USD→SGD, SGD→USD, SGD→KRW and KRW→SGD follow the same two measures and the same no-repeat rule.
+They are checked whenever currency markets are open (Sunday evening to Friday evening, UTC), including
+while the US stock market is shut. Prices read as "1 USD = 1.3121 SGD", and the plan line says what it
+means in practice, e.g. "a good moment to sell USD for SGD".
+
+Mirror pairs move as opposites, so a SELL on USD→SGD usually arrives with a BUY on SGD→USD at the same
+time. They can occasionally differ at the margin, because the averages of a rate and of its reciprocal
+are not exact mirrors. Unusual-move alerts for currencies use a 1% floor instead of 4%, because
+currencies move far less than stocks.
+
 ## Coverage
 
 Runs every 10 minutes, around the clock. The job asks Yahoo which session is live and exits after a

@@ -162,8 +162,10 @@ def settled_rows(t):
     if sess in ("PRE", "REGULAR", "POST"):
         if dates[-1] == today_x:
             rows, dates = rows[:-1], dates[:-1]
-    elif last_session is not None and dates[-1] == last_session:
-        rows, dates = rows[:-1], dates[:-1]
+    elif last_session is not None:
+        # Also drop any early row Yahoo adds for a day that has not traded yet.
+        while dates and dates[-1] >= last_session:
+            rows, dates = rows[:-1], dates[:-1]
     if len(rows) < 40:
         return None
     return {"rows": rows[-220:], "dates": [x.isoformat() for x in dates[-220:]],
@@ -178,10 +180,10 @@ def derive(rows, dates=None):
     N = min(60, len(c) - 20)   # history kept for the alert charts (needs ~20 days of warm-up)
     hist = {
         "dates": (dates or [""] * len(c))[-N:],
-        "c": [round(x, 4) for x in c[-N:]],
-        "up": [round(e[j] + 2 * a[j], 4) for j in range(len(c) - N, len(c))],
-        "lo": [round(e[j] - 2 * a[j], 4) for j in range(len(c) - N, len(c))],
-        "ma3": [round(sum(c[j-2:j+1]) / 3, 4) for j in range(len(c) - N, len(c))],
+        "c": [sig6(x) for x in c[-N:]],
+        "up": [sig6(e[j] + 2 * a[j]) for j in range(len(c) - N, len(c))],
+        "lo": [sig6(e[j] - 2 * a[j]) for j in range(len(c) - N, len(c))],
+        "ma3": [sig6(sum(c[j-2:j+1]) / 3) for j in range(len(c) - N, len(c))],
         "rsi": [round(rv[j], 2) for j in range(len(c) - N, len(c))],
     } if N >= 20 else None
     rets = [c[j] / c[j-1] - 1 for j in range(max(1, len(c) - 60), len(c))]
@@ -325,11 +327,63 @@ def trigger(d, side, ref=None, span=0.45, n=600):
 
 # ---------------------------------------------------------------- plain-language helpers
 NAMES = CFG.get("names", {})
+FX = CFG.get("fx", {})
+
+
+def is_fx(t):
+    return t in FX
+
+
+def label(t):
+    return FX[t]["label"] if is_fx(t) else t
+
+
+def num(t, x):
+    """Enough digits to be useful: 1,052.40 KRW, 1.3012 SGD, 0.000951 SGD."""
+    if not is_fx(t):
+        return f"{x:,.2f}"
+    ax = abs(x)
+    return f"{x:,.2f}" if ax >= 100 else (f"{x:,.4f}" if ax >= 1 else f"{x:.6f}")
+
+
+def money(t, x):
+    return f"{num(t, x)} {FX[t]['quote']}" if is_fx(t) else "$" + f"{x:,.2f}"
+
+
+def rate(t, x):
+    """The headline price: '1 USD = 1.3012 SGD' for a currency, '$183.00' for a stock."""
+    return f"1 {FX[t]['base']} = {num(t, x)} {FX[t]['quote']}" if is_fx(t) else "$" + f"{x:,.2f}"
+
+
+def sess_text(t, sess):
+    if is_fx(t):
+        return "currency market open" if sess != "CLOSED" else "currency market closed"
+    return SESSION_PLAIN.get(sess, sess)
+
+
+def fx_open(now=None):
+    """Currencies trade from Sunday ~21:00 UTC to Friday ~22:00 UTC. A reading in the gap
+    returns Friday's last rate, which cannot cross anything, so the edges are harmless."""
+    u = dt.datetime.fromtimestamp(time.time() if now is None else now, dt.timezone.utc)
+    wd, h = u.weekday(), u.hour            # Monday = 0
+    if wd == 5:
+        return False
+    if wd == 6 and h < 21:
+        return False
+    if wd == 4 and h >= 22:
+        return False
+    return True
+
+
+def sig6(x):
+    return float(f"{x:.6g}") if x is not None else None
 SESSION_PLAIN = {"PRE": "pre-market, before the US open", "REGULAR": "market open",
                  "POST": "after hours, after the US close", "CLOSED": "market closed"}
 
 
 def full_name(t, o=None):
+    if is_fx(t):
+        return FX[t]["name"]
     return NAMES.get(t) or (o or {}).get("name") or t
 
 
@@ -353,6 +407,11 @@ def order_plain(order):
 
 def plan_text(t, side):
     """What your holdings plan says this signal means, in plain words."""
+    if is_fx(t):
+        b, q = FX[t]["base"], FX[t]["quote"]
+        if side == "BUY":
+            return f"{b} looks cheap against {q} right now: a good moment to <b>buy {b} with {q}</b>."
+        return f"{b} looks expensive against {q} right now: a good moment to <b>sell {b} for {q}</b>."
     if H is None:
         return "Your holdings aren't loaded, so I can't say whether this triggers an order."
     cf = H["tickers"].get(t)
@@ -383,10 +442,11 @@ LEG = {"k": "Price range", "r": "Momentum"}
 
 
 def leg_state(leg, ev):
+    t = ev.get("t", "")
     s = ev[leg]
     if leg == "k":
-        return {"WATCH SELL": f"above the top of its normal range (${ev['up']:,.2f}), running hot",
-                "WATCH BUY": f"below the bottom of its normal range (${ev['lo']:,.2f}), unusually low",
+        return {"WATCH SELL": f"above the top of its normal range ({money(t, ev['up'])}), running hot",
+                "WATCH BUY": f"below the bottom of its normal range ({money(t, ev['lo'])}), unusually low",
                 "NONE": "inside its normal range"}.get(s, s)
     return {"WATCH SELL": f"overheated (score {ev['rsi']:.0f}, above 70)",
             "WATCH BUY": f"sold off hard (score {ev['rsi']:.0f}, below 30)",
@@ -394,15 +454,16 @@ def leg_state(leg, ev):
 
 
 def why(leg, side, ref, ev):
+    t = ev.get("t", "")
     px = ev["px"]
     if leg == "k" and side == "SELL":
         return (f"<b>Price range says SELL.</b> It had climbed above the top of its normal price "
-                f"range (${ref['up']:,.2f}), which is unusually high for it. It has now fallen back "
-                f"inside, to ${px:,.2f}. Slipping back into the range after running hot is your sell signal.")
+                f"range ({money(t, ref['up'])}), which is unusually high for it. It has now fallen back "
+                f"inside, to {money(t, px)}. Slipping back into the range after running hot is your sell signal.")
     if leg == "k" and side == "BUY":
         return (f"<b>Price range says BUY.</b> Its 3-day average price had sunk to the bottom of its "
-                f"normal range or lower (${ref['lo']:,.2f}), which is unusually low for it. The 3-day "
-                f"average has now climbed back above it (${ev['ma3']:,.2f} vs ${ev['lo']:,.2f}). "
+                f"normal range or lower ({money(t, ref['lo'])}), which is unusually low for it. The 3-day "
+                f"average has now climbed back above it ({money(t, ev['ma3'])} vs {money(t, ev['lo'])}). "
                 f"Recovering back into the range is your buy signal.")
     if leg == "r" and side == "SELL":
         return (f"<b>Momentum says SELL.</b> Its momentum score (0 to 100; high means it has been "
@@ -418,15 +479,15 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     t, ev, ref = o["t"], o["ev"], o["ref"]
     said = set(legs) | set(earlier)
     strong = said == {"k", "r"}
-    label = f"STRONG {side}" if strong else side
+    verdict = f"STRONG {side}" if strong else side
     dot = "🟢" if side == "BUY" else "🔴"
     combo = lambda l: side if l in said else "—"
     icons = "".join(dot if l in said else "⚪" for l in ("k", "r"))
-    lines = [f"{icons} <b>{label} — {t}</b>",
+    lines = [f"{icons} <b>{verdict} — {label(t)}</b>",
              esc(full_name(t, o)),
-             f"<b>${ev['px']:,.2f}</b> · {when_text()} · {SESSION_PLAIN.get(sess, sess)}",
+             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}",
              "",
-             f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>{label}</b>",
+             f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>{verdict}</b>",
              ""]
     for l in ("k", "r"):
         if l in legs:
@@ -444,7 +505,7 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     lines += [f"<b>Your plan:</b> {plan_text(t, side)}", "", "<i>Alert only. Nothing has been traded.</i>"]
     note = {"SELL": "fell back inside its normal range" if "k" in legs else "momentum cooled below 70",
             "BUY": "recovered into its normal range" if "k" in legs else "momentum recovered above 30"}[side]
-    png = price_chart(t, full_name(t, o), o["d"], ev, f"{label} at ${ev['px']:,.2f}",
+    png = price_chart(t, full_name(t, o), o["d"], ev, f"{verdict} at {money(t, ev['px'])}",
                       "#2e7d32" if side == "BUY" else "#c62828", note)
     return "\n".join(lines).replace("\n\n\n", "\n\n"), png
 
@@ -452,8 +513,8 @@ def signal_message(o, side, legs, earlier, sess, held=False):
 def mixed_message(o, sess):
     t, ev, ref = o["t"], o["ev"], o["ref"]
     kside, rside = ev["k"], ev["r"]
-    lines = [f"⚠️ <b>MIXED — {t}</b>", esc(full_name(t, o)),
-             f"<b>${ev['px']:,.2f}</b> · {when_text()} · {SESSION_PLAIN.get(sess, sess)}", "",
+    lines = [f"⚠️ <b>MIXED — {label(t)}</b>", esc(full_name(t, o)),
+             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}", "",
              f"Price range <b>{kside}</b> + Momentum <b>{rside}</b>  →  <b>the two measures disagree</b>", "",
              why("k", kside, ref, ev), "", why("r", rside, ref, ev), "",
              "<b>Your plan:</b> your rules say a mixed signal triggers nothing.", "",
@@ -467,17 +528,17 @@ def near_buy_message(o, sess, lvl, leg):
     t, ev = o["t"], o["ev"]
     pct = (lvl / ev["px"] - 1) * 100
     if leg == "k":
-        how = (f"<b>Price range:</b> its 3-day average price (${ev['ma3']:,.2f}) is at or below the bottom of "
-               f"its normal range (${ev['lo']:,.2f}), which is unusually low for it. If the price climbs to "
-               f"<b>${lvl:,.2f}</b>, the 3-day average lifts back above the bottom. That recovery is your buy signal.")
+        how = (f"<b>Price range:</b> its 3-day average price ({money(t, ev['ma3'])}) is at or below the bottom of "
+               f"its normal range ({money(t, ev['lo'])}), which is unusually low for it. If the price climbs to "
+               f"<b>{money(t, lvl)}</b>, the 3-day average lifts back above the bottom. That recovery is your buy signal.")
         other = f"Momentum is {leg_state('r', ev)}."
     else:
         how = (f"<b>Momentum:</b> its score is {ev['rsi']:.0f}, below 30, so it has been sold off hard. If the "
-               f"price climbs to <b>${lvl:,.2f}</b>, the score recovers above 30. That is your buy signal.")
+               f"price climbs to <b>{money(t, lvl)}</b>, the score recovers above 30. That is your buy signal.")
         other = f"Price range: {leg_state('k', ev)}."
-    lines = [f"🔵 <b>Close to a BUY — {t}</b>", esc(full_name(t, o)),
-             f"<b>${ev['px']:,.2f}</b> · {when_text()} · {SESSION_PLAIN.get(sess, sess)}", "",
-             f"<b>Not a signal yet.</b> A BUY appears if the price reaches <b>${lvl:,.2f}</b> "
+    lines = [f"🔵 <b>Close to a BUY — {label(t)}</b>", esc(full_name(t, o)),
+             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}", "",
+             f"<b>Not a signal yet.</b> A BUY appears if the price reaches <b>{money(t, lvl)}</b> "
              f"({pct:+.1f}% from now).", "", how, "", other, "",
              f"<b>If it happens, your plan:</b> {plan_text(t, 'BUY')}", "",
              "<i>Sent because you asked. Nothing has been traded.</i>"]
@@ -491,14 +552,16 @@ def near_buy(rows, sess):
     lim = CFG.get("near_pct", 5.0)
     cand = []
     for o in rows:
+        cap = CFG.get("near_pct_fx", 1.0) if is_fx(o["t"]) else lim
         for leg, key in (("k", "K"), ("r", "R")):
             lvl = (o.get("tb") or {}).get(key)
-            if lvl is not None and 0 <= (lvl / o["px"] - 1) * 100 <= lim:
+            if lvl is not None and 0 <= (lvl / o["px"] - 1) * 100 <= cap:
                 cand.append((lvl / o["px"] - 1, o, lvl, leg))
     best = {}
     for c in sorted(cand, key=lambda x: x[0]):
         best.setdefault(c[1]["t"], c)
-    out = [near_buy_message(o, sess, lvl, leg) for _, o, lvl, leg in sorted(best.values(), key=lambda x: x[0])]
+    out = [near_buy_message(o, o.get("sess", sess), lvl, leg)
+           for _, o, lvl, leg in sorted(best.values(), key=lambda x: x[0])]
     if not out:
         out = [(f"🔵 <b>Close to a BUY</b>\n{when_text()} · {SESSION_PLAIN.get(sess, sess)}\n\n"
                 f"No ticker is within {lim:.0f}% of a BUY right now.\n\n<i>Sent because you asked.</i>", None)]
@@ -518,25 +581,26 @@ def anomalies(rows, bench):
         z = (px / pc - 1) / sig
         o["z"] = z
         usual = sig * 100
+        floor = AN.get("abs_floor_pct_fx", 1.0) if is_fx(t) else AN["abs_floor_pct"]
         big = abs(z) >= AN["sigma_single"]
-        mid = abs(z) >= AN["sigma_single_with_abs"] and abs(mv) >= AN["abs_floor_pct"]
+        mid = abs(z) >= AN["sigma_single_with_abs"] and abs(mv) >= floor
         if big or mid:
             out.append({"key": f"anom:move:{t}", "kind": "move", "ticker": t, "shade": 0,
-                        "title": f"Unusual move — {t}", "chart_head": "Unusual move",
+                        "title": f"Unusual move — {label(t)}", "chart_head": "Unusual move",
                         "note": f"{'up' if mv > 0 else 'down'} {abs(mv):.1f}% today",
-                        "text": (f"<b>${px:,.2f}</b>, {'up' if mv > 0 else 'down'} <b>{abs(mv):.1f}%</b> today.\n\n"
+                        "text": (f"<b>{rate(t, px)}</b>, {'up' if mv > 0 else 'down'} <b>{abs(mv):.1f}%</b> today.\n\n"
                                  f"On a normal day it moves about {usual:.1f}% either way, so today's move is "
                                  f"roughly <b>{abs(z):.0f} times bigger than usual</b>. Something may be "
                                  f"happening with this one; worth checking the news.")})
         c6 = d.get("closes60") or []
         if len(c6) >= 3:
             run = px / c6[-3] - 1
-            if abs(run / sig) >= AN["sigma_run3"] and abs(run * 100) >= AN["abs_floor_pct"]:
+            if abs(run / sig) >= AN["sigma_run3"] and abs(run * 100) >= floor:
                 out.append({"key": f"anom:run:{t}", "kind": "run", "ticker": t, "shade": 3,
-                            "title": f"Unusual 3-day {'rise' if run > 0 else 'drop'} — {t}",
+                            "title": f"Unusual 3-day {'rise' if run > 0 else 'drop'} — {label(t)}",
                             "chart_head": f"Unusual 3-day {'rise' if run > 0 else 'drop'}",
                             "note": f"{'up' if run > 0 else 'down'} {abs(run*100):.1f}% in 3 trading days",
-                            "text": (f"<b>${px:,.2f}</b>, {'up' if run > 0 else 'down'} <b>{abs(run*100):.1f}%</b> "
+                            "text": (f"<b>{rate(t, px)}</b>, {'up' if run > 0 else 'down'} <b>{abs(run*100):.1f}%</b> "
                                      f"over the last 3 trading days.\n\nIt normally moves about {usual:.1f}% "
                                      f"a day, so a 3-day move this size is rare for it.")})
     ai = [o for o in rows if o["t"] in CFG["ai_group"]]
@@ -565,7 +629,7 @@ def anomalies(rows, bench):
                                      f"while the S&amp;P 500 ({bn}) moved <b>{bv:+.1f}%</b>, a gap of "
                                      f"{abs(g5-bv):.1f} points.\n\nMoney appears to be moving "
                                      f"{'into' if g5 > bv else 'out of'} AI-related names.")})
-    moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows]
+    moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows if not is_fx(o["t"])]
     if moves:
         dn = sum(1 for m in moves if m <= -AN["breadth_move_pct"])
         if dn / len(moves) >= AN["breadth_frac"]:
@@ -581,7 +645,7 @@ def anomaly_message(a, rows, sess):
     head = f"⚠️ <b>{esc(a['title'])}</b>"
     if a["ticker"]:
         o = next(x for x in rows if x["t"] == a["ticker"])
-        body = [head, esc(full_name(a["ticker"], o)), f"{when_text()} · {SESSION_PLAIN.get(sess, sess)}",
+        body = [head, esc(full_name(a["ticker"], o)), f"{when_text()} · {sess_text(a['ticker'], o.get('sess', sess))}",
                 "", a["text"], "", "<i>A heads-up, not a buy or sell signal on its own.</i>"]
         png = price_chart(a["ticker"], full_name(a["ticker"], o), o["d"], o["ev"], a["chart_head"],
                           "#ef6c00", a["note"], shade=a.get("shade", 0))
@@ -721,24 +785,24 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
             ax.axvspan(xt - shade - 0.5, xt + 0.5, color=color, alpha=0.10)
         if target is not None:
             ax.axhline(target, color=color, ls="--", lw=1.2)
-            ax.text(xs[len(xs) // 3], target, f" {target_label} ${target:,.2f} ", color=color, fontsize=9,
+            ax.text(xs[len(xs) // 3], target, f" {target_label} {money(t, target)} ", color=color, fontsize=9,
                     fontweight="bold", va="bottom", bbox=dict(fc="white", ec="none", alpha=0.8, pad=1))
         ax.scatter([xt], [ev["px"]], s=130, color=color, zorder=6, edgecolor="white", linewidth=1.8)
         lo_y, hi_y = min(lo + h["c"]), max(up + h["c"])
         above = ev["px"] > (lo_y + hi_y) / 2
-        ax.annotate(f"${ev['px']:,.2f} now", xy=(xt, ev["px"]),
+        ax.annotate(f"{money(t, ev['px'])} now", xy=(xt, ev["px"]),
                     xytext=(-95, -34 if above else 24), textcoords="offset points",
                     fontsize=9, color=color, fontweight="bold",
                     bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=color, lw=0.9),
                     arrowprops=dict(arrowstyle="->", color=color, lw=1.2))
-        ax.set_title(f"{t}  ·  {name}", loc="left", fontsize=12, fontweight="bold", pad=22)
+        ax.set_title(f"{label(t)}  ·  {name}", loc="left", fontsize=12, fontweight="bold", pad=22)
         ax.text(0, 1.02, f"{headline}  ·  {note}", transform=ax.transAxes, fontsize=11,
                 color=color, fontweight="bold")
         ax.legend(loc="upper left", fontsize=8, frameon=False, ncol=3)
         if target is not None:   # keep the target line on the chart even if it is outside recent prices
             y0, y1 = ax.get_ylim()
             ax.set_ylim(min(y0, target * 0.99), max(y1, target * 1.01))
-        ax.set_ylabel("price ($)")
+        ax.set_ylabel(f"{FX[t]['quote']} per 1 {FX[t]['base']}" if is_fx(t) else "price ($)")
         ax.grid(alpha=0.18)
         ax.margins(x=0.02)
         plt.setp(ax.get_xticklabels(), visible=False)
@@ -771,7 +835,7 @@ def group_chart(rows, title, period):
         return None
     try:
         vals = []
-        for o in rows:
+        for o in [x for x in rows if not is_fx(x["t"])]:
             c = o["d"].get("closes60") or []
             base = o["d"]["c"][-1] if period == 1 else (c[-5] if len(c) >= 5 else None)
             if base:
@@ -851,7 +915,7 @@ def digest(rows, sess, alerts):
         # Nearest to its trigger first: that is the one worth looking at.
         for o in sorted(b, key=lambda x: abs(x["near"]) if x.get("near") is not None else 9e9):
             near = o.get("near")
-            tr.append([o["t"], f"{o['ev']['px']:,.2f}",
+            tr.append([label(o["t"])[:6], num(o["t"], o['ev']['px']),
                        f"{(o['ev']['px']/o['d']['c'][-1]-1)*100:+.2f}",
                        f"{o['ev']['rsi']:.0f}",
                        f"{near:+.1f}%" if near is not None else "—"])
@@ -885,15 +949,16 @@ def write_status(rows, sess, alerts, errs):
     for o in rows:
         ev, d = o["ev"], o["d"]
         out["tickers"][o["t"]] = {
-            "price": round(ev["px"], 4),
-            "prev_close": round(d["c"][-1], 4),
+            "label": label(o["t"]), "kind": "currency" if is_fx(o["t"]) else "stock",
+            "price": sig6(ev["px"]),
+            "prev_close": sig6(d["c"][-1]),
             "day_pct": round((ev["px"] / d["c"][-1] - 1) * 100, 2),
             "rsi": round(ev["rsi"], 1),
             "keltner": ev["k"], "momentum": ev["r"],
-            "upper": round(ev["up"], 4), "lower": round(ev["lo"], 4),
-            "ma3": round(ev["ma3"], 4),
-            "buy_trigger": {k: round(v, 4) for k, v in (o.get("tb") or {}).items()},
-            "sell_trigger": {k: round(v, 4) for k, v in (o.get("ts") or {}).items()},
+            "upper": sig6(ev["up"]), "lower": sig6(ev["lo"]),
+            "ma3": sig6(ev["ma3"]),
+            "buy_trigger": {k: sig6(v) for k, v in (o.get("tb") or {}).items()},
+            "sell_trigger": {k: sig6(v) for k, v in (o.get("ts") or {}).items()},
             "nearest_trigger_pct": o.get("near"),
             "sigma_pct": round(d["sigma"] * 100, 3) if d.get("sigma") else None,
             "z": round(o["z"], 2) if o.get("z") is not None else None,
@@ -921,19 +986,34 @@ def poll(state):
         state.update({"day": today, "sent": [], "pending": {}, "obs": keep or {}})
     state.setdefault("obs", {})
     want_list = MODE in ("digest", "buy-watch")   # only when you ask for it
-    if sess == "CLOSED" and not want_list:
-        print("market CLOSED, nothing to do (1 call)")
+    # Stocks follow the US session; currencies trade almost around the clock on weekdays.
+    stocks = tickers if (sess != "CLOSED" or want_list) else []
+    fxs = list(FX) if (fx_open() or want_list) else []
+    if not stocks and not fxs:
+        print("stock and currency markets both shut, nothing to do (1 call)")
         return None, sess, []
 
-    cache, fresh, cerrs = build_cache(tickers, f"{today}:{'shut' if sess == 'CLOSED' else 'open'}")
-    rows, errs = [], list(cerrs)
-    for t in tickers:
+    rows, errs = [], []
+    if stocks:
+        cache, fresh, cerrs = build_cache(stocks, f"{today}:{'shut' if sess == 'CLOSED' else 'open'}")
+        errs += cerrs
+    if fxs:
+        # Currency days roll over at midnight UTC, not New York, so they get their own refresh key.
+        ukey = dt.datetime.fromtimestamp(time.time(), dt.timezone.utc).strftime("%Y-%m-%d")
+        cache, fresh, cerrs = build_cache(fxs, f"fx:{ukey}:{'open' if fx_open() else 'shut'}")
+        errs += cerrs
+    try:
+        cache = json.load(open(CACHE))
+    except Exception:
+        cache = {}
+    for t in stocks + fxs:
         d = cache.get(t)
         if not isinstance(d, dict) or "ema" not in d:
             errs.append(f"{t}: no cached bars")
             continue
         try:
             lv = probe if t == bench else live(t)
+            tsess = lv["sess"] if is_fx(t) else sess
             px = lv["px"]
             if px is None:
                 errs.append(f"{t}: no price")
@@ -941,11 +1021,12 @@ def poll(state):
             # Reject an obviously broken extended-hours print on a thin name.
             pc = d["c"][-1]
             mv = abs(px / pc - 1)
-            if sess in ("PRE", "POST") and t in THIN and mv > 0.15 and lv["n"] < 5:
+            if tsess in ("PRE", "POST") and t in THIN and mv > 0.15 and lv["n"] < 5:
                 errs.append(f"{t}: suspect {mv*100:.0f}% extended print on {lv['n']} bars, ignored")
                 continue
             ref = state["obs"].get(t) if REALTIME else None
             ev = evaluate(d, px, lv["hi"], lv["lo"], ref)
+            ev["t"] = t
             if ref is None:   # the comparison point, in the same shape, for the explanations
                 ref = {"px": pc, "ma3": d["ma3"], "up": d["up"], "lo": d["lo"], "rsi": d["rsi"]}
             nxt = obs(ev) if REALTIME else None
@@ -956,14 +1037,14 @@ def poll(state):
                     p = (v / px - 1) * 100
                     if near is None or abs(p) < abs(near):
                         near = round(p, 1)
-            rows.append({"t": t, "d": d, "ev": ev, "ref": ref, "px": px, "name": lv.get("name"),
+            rows.append({"t": t, "d": d, "ev": ev, "ref": ref, "px": px, "name": lv.get("name"), "sess": tsess,
                          "tb": tb, "ts": ts, "near": near})
         except Exception as e:
             errs.append(f"{t}: {e}")
     if not rows:
         return None, sess, errs
     b = next((o for o in rows if o["t"] == bench), None)
-    alerts = anomalies(rows, b)
+    alerts = anomalies(rows, b if stocks else None)
     write_status(rows, sess, alerts, errs)
     return (rows, sess, alerts, errs, want_list), sess, errs
 
@@ -1004,7 +1085,7 @@ def decide(rows, alerts, state, sess):
         earlier = [l for l in ("k", "r") if l not in legs and done(t, side, l)]
         for l in legs:
             sent.append(f"{t}:{side}:{l}")
-        out.append(signal_message(by_t[t], side, sorted(legs), earlier, sess, held=True))
+        out.append(signal_message(by_t[t], side, sorted(legs), earlier, by_t[t].get("sess", sess), held=True))
 
     # 2. New signals at this reading, one message per ticker.
     for o in rows:
@@ -1013,14 +1094,14 @@ def decide(rows, alerts, state, sess):
             key = f"{t}:MIXED:x"
             if key not in sent:
                 sent.append(key)
-                out.append(mixed_message(o, sess))
+                out.append(mixed_message(o, o.get("sess", sess)))
             continue
         for side in ("BUY", "SELL"):
             legs = [l for l in ("k", "r") if ev[l] == side and not done(t, side, l)
                     and f"{t}:{side}:{l}" not in pending]
             if not legs:
                 continue
-            if CONFIRM_THIN and sess in ("PRE", "POST") and t in THIN:
+            if CONFIRM_THIN and o.get("sess", sess) in ("PRE", "POST") and t in THIN:
                 for l in legs:
                     pending[f"{t}:{side}:{l}"] = sess
                 print(f"{t} {side}: thin name in extended hours, waiting one more reading")
@@ -1028,7 +1109,7 @@ def decide(rows, alerts, state, sess):
             earlier = [l for l in ("k", "r") if l not in legs and done(t, side, l)]
             for l in legs:
                 sent.append(f"{t}:{side}:{l}")
-            out.append(signal_message(o, side, legs, earlier, sess))
+            out.append(signal_message(o, side, legs, earlier, o.get("sess", sess)))
 
     # 3. Unusual movement, one message each.
     for a in alerts:
@@ -1051,6 +1132,7 @@ def main():
                                              f"{lv.get('edate')}:{'shut' if lv['sess'] == 'CLOSED' else 'open'}")
             d = cache[CFG["benchmark"]]
             ev = evaluate(d, lv["px"], lv["hi"], lv["lo"])
+            ev["t"] = CFG["benchmark"]
             msg = (f"{full_name(CFG['benchmark'])} is at ${lv['px']:,.2f}. "
                    f"Price range: {leg_state('k', ev)}. Momentum: {leg_state('r', ev)}. "
                    f"Market: {SESSION_PLAIN.get(lv['sess'], lv['sess'])}.")

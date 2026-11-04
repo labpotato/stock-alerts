@@ -44,6 +44,9 @@ td:first-child{text-align:left;font-weight:600}
 const ORDER=["BUY","SELL","WATCH SELL","WATCH BUY"];
 const cls=s=>"b-"+s.replace(/ /g,"");
 const pc=v=>(v>0?"+":"")+v.toFixed(2)+"%";
+const fx=(v,kind)=>{if(kind!=="currency")return v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const a=Math.abs(v); return a>=100?v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
+  :(a>=1?v.toFixed(4):v.toFixed(6));};
 fetch("status.json?"+Date.now()).then(r=>r.json()).then(d=>{
   const s=d.session||"?";
   const lab={PRE:"pre-market",REGULAR:"market open",POST:"after hours",CLOSED:"market closed"}[s]||s;
@@ -69,16 +72,16 @@ fetch("status.json?"+Date.now()).then(r=>r.json()).then(d=>{
        `<th class="hide-s">Lower</th><th class="hide-s">Upper</th></tr>`;
     for(const [t,v] of rows){
       const n=v.nearest_trigger_pct;
-      h+=`<tr><td>${t}<br><span class="tk">${v.keltner} / ${v.momentum}</span></td>`+
-         `<td>${v.price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>`+
+      h+=`<tr><td>${v.label||t}<br><span class="tk">${v.keltner} / ${v.momentum}</span></td>`+
+         `<td>${fx(v.price,v.kind)}</td>`+
          `<td class="${v.day_pct>=0?"up":"dn"}">${pc(v.day_pct)}</td><td>${v.rsi.toFixed(0)}</td>`+
          `<td>${n===null||n===undefined?"—":pc(n)}</td>`+
-         `<td class="hide-s">${v.lower.toFixed(2)}</td><td class="hide-s">${v.upper.toFixed(2)}</td></tr>`;
+         `<td class="hide-s">${fx(v.lower,v.kind)}</td><td class="hide-s">${fx(v.upper,v.kind)}</td></tr>`;
     }
     h+="</table>";
   }
   if(buck.QUIET) h+=`<h2>Quiet — ${buck.QUIET.length}</h2><div class="quiet">`+
-      buck.QUIET.map(x=>x[0]).sort().join(", ")+`</div>`;
+      buck.QUIET.map(x=>x[1].label||x[0]).sort().join(", ")+`</div>`;
   if((d.errors||[]).length) h+=`<h2>Not priced</h2><div class="quiet">`+
       d.errors.map(e=>e.replace(/</g,"&lt;")).join("<br>")+`</div>`;
   document.getElementById("body").innerHTML=h;
