@@ -49,11 +49,36 @@ def get(url, tries=3):
     raise last
 
 
+_MEMO = {}
+
+
 def chart(t, rng, iv, prepost=False):
-    u = (f"https://query1.finance.yahoo.com/v8/finance/chart/{t}"
+    """A reversed currency pair (e.g. KRW->SGD) is computed from its partner (SGD->KRW).
+    Yahoo quotes KRWSGD=X rounded to 0.0010, which makes every tick look like a 5% jump,
+    and computing both directions from one source keeps mirror pairs exactly consistent."""
+    inv = (CFG.get("fx", {}).get(t) or {}).get("invert_of")
+    src = inv or t
+    u = (f"https://query1.finance.yahoo.com/v8/finance/chart/{src}"
          f"?range={rng}&interval={iv}" + ("&includePrePost=true" if prepost else ""))
-    res = get(u)["chart"]["result"][0]
-    return res
+    if u not in _MEMO:
+        _MEMO[u] = get(u)["chart"]["result"][0]
+    return invert_chart(_MEMO[u]) if inv else _MEMO[u]
+
+
+def invert_chart(res):
+    r = json.loads(json.dumps(res))
+    inv = lambda x: (1.0 / x) if x else None
+    for q in (r.get("indicators") or {}).get("quote") or []:
+        o, h, l, c = q.get("open") or [], q.get("high") or [], q.get("low") or [], q.get("close") or []
+        q["open"], q["close"] = [inv(x) for x in o], [inv(x) for x in c]
+        q["high"], q["low"] = [inv(x) for x in l], [inv(x) for x in h]   # the low becomes the high
+    m = r.get("meta") or {}
+    for k in ("regularMarketPrice", "chartPreviousClose", "previousClose",
+              "regularMarketDayHigh", "regularMarketDayLow"):
+        if m.get(k):
+            m[k] = 1.0 / m[k]
+    m.pop("longName", None); m.pop("shortName", None)
+    return r
 
 
 # ---------------------------------------------------------------- indicators
@@ -982,9 +1007,15 @@ def poll(state):
         # New exchange day: alerts may repeat, but the last real-time reading carries over,
         # so an after-hours cross is not reported again at the next pre-market.
         keep = state.get("obs")
+        state_fxv = state.get("fx_version")
         state.clear()
-        state.update({"day": today, "sent": [], "pending": {}, "obs": keep or {}})
+        state.update({"day": today, "sent": [], "pending": {}, "obs": keep or {},
+                      "fx_version": state_fxv})
     state.setdefault("obs", {})
+    if state.get("fx_version") != 2:
+        for t in FX:
+            state["obs"].pop(t, None)
+        state["fx_version"] = 2
     want_list = MODE in ("digest", "buy-watch")   # only when you ask for it
     # Stocks follow the US session; currencies trade almost around the clock on weekdays.
     stocks = tickers if (sess != "CLOSED" or want_list) else []
@@ -1000,7 +1031,7 @@ def poll(state):
     if fxs:
         # Currency days roll over at midnight UTC, not New York, so they get their own refresh key.
         ukey = dt.datetime.fromtimestamp(time.time(), dt.timezone.utc).strftime("%Y-%m-%d")
-        cache, fresh, cerrs = build_cache(fxs, f"fx:{ukey}:{'open' if fx_open() else 'shut'}")
+        cache, fresh, cerrs = build_cache(fxs, f"fx2:{ukey}:{'open' if fx_open() else 'shut'}")
         errs += cerrs
     try:
         cache = json.load(open(CACHE))

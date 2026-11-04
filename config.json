@@ -82,7 +82,8 @@
       "base": "SGD",
       "quote": "USD",
       "label": "SGD\u2192USD",
-      "name": "Singapore dollar to US dollar (USD you get for 1 SGD)"
+      "name": "Singapore dollar to US dollar (USD you get for 1 SGD)",
+      "invert_of": "USDSGD=X"
     },
     "SGDKRW=X": {
       "base": "SGD",
@@ -94,7 +95,8 @@
       "base": "KRW",
       "quote": "SGD",
       "label": "KRW\u2192SGD",
-      "name": "Korean won to Singapore dollar (SGD you get for 1 KRW)"
+      "name": "Korean won to Singapore dollar (SGD you get for 1 KRW)",
+      "invert_of": "SGDKRW=X"
     }
   },
   "near_pct_fx": 1.0
