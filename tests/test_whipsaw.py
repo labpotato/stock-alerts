@@ -59,3 +59,14 @@ def test_d_second_measure_later_the_same_day_is_a_short_strong_upgrade(make_watc
     assert "agreeing with momentum earlier today" in text
     assert len(text) < 600
     assert "XLF:SELL:k" in state["sent"]
+
+
+def test_c_gold_is_not_judged_against_the_stock_market_and_mirror_pairs_alert_once(make_watch):
+    fx = {"SGDKRW=X": {"base": "SGD", "quote": "KRW", "label": "SGD→KRW", "name": "SGD to KRW"},
+          "KRWSGD=X": {"base": "KRW", "quote": "SGD", "label": "KRW→SGD", "name": "KRW to SGD", "invert_of": "SGDKRW=X"}}
+    w, _ = make_watch(tickers=("VOO", "GLDM"), benchmark="VOO", fx=fx)
+    rows = [_row("VOO", 100, 96.92, 0.688), _row("GLDM", 100, 101.43, 1.39),
+            _row("SGDKRW=X", 100, 101.5, 0.4), _row("KRWSGD=X", 100, 1 / 1.015 * 100, 0.4)]
+    keys = [x["key"] for x in w.anomalies(rows, rows[0])]
+    assert "anom:move:GLDM" not in keys                  # +1.4 % on its own is ordinary for gold
+    assert "anom:move:SGDKRW=X" in keys and "anom:move:KRWSGD=X" not in keys

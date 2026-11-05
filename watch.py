@@ -743,7 +743,10 @@ def anomalies(rows, bench):
         o["z"] = z
         usual = sig * 100
         floor = AN.get("abs_floor_pct_fx", 1.0) if is_fx(t) else AN["abs_floor_pct"]
-        vs = rel and not is_fx(t)
+        if is_fx(t) and (FX.get(t) or {}).get("invert_of"):
+            continue                                 # the mirror of a pair already checked: same move
+        # Only stocks are judged against the stock market; gold, bonds and currencies on their own.
+        vs = rel and not is_fx(t) and t not in CFG.get("not_equity", [])
         if vs and t == bn:
             continue
         x = mv - mk["b1"] if vs else mv               # the part of the move the market doesn't explain

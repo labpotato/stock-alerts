@@ -137,5 +137,10 @@
         3
       ]
     ]
-  }
+  },
+  "not_equity": [
+    "GLDM",
+    "SGOV"
+  ],
+  "_not_equity_note": "Not judged against the stock market for unusual moves (their own move only)."
 }
