@@ -37,6 +37,7 @@ class FakeMarket:
         self.now = et(2026, 11, 4, 16, 30)
         self.prices = {}          # live price per ticker
         self.extended_high = {}   # an extended-hours 1-minute bar high, per ticker
+        self.splits = {}          # t -> {"date": ts, "n": 3, "d": 1, "adjusted": bool, "event": bool}
 
     def _day(self):
         return dt.datetime.fromtimestamp(self.now, ET).date()
@@ -74,6 +75,21 @@ class FakeMarket:
                           "chartPreviousClose": q["close"][-2]})
         r["meta"].pop("marketState", None)
         if iv == "1d":
+            sp = self.splits.get(t)
+            if sp:
+                if sp.get("event", True):
+                    r["events"] = {"splits": {str(sp["date"]): {"date": sp["date"], "numerator": sp["n"],
+                                                                "denominator": sp["d"],
+                                                                "splitRatio": f"{sp['n']}:{sp['d']}"}}}
+                if sp.get("adjusted"):
+                    k = sp["n"] / sp["d"]
+                    for i, ts_ in enumerate(r["timestamp"]):
+                        if ts_ < sp["date"]:
+                            for f in ("open", "high", "low", "close"):
+                                q[f][i] = q[f][i] / k if q[f][i] is not None else None
+                    r["meta"]["regularMarketPrice"] = q["close"][-1]
+                elif t in self.prices:
+                    r["meta"]["regularMarketPrice"] = self.prices[t]   # Yahoo's latest price, post-split
             return r
         hi = self.extended_high.get(t)
         n = 30

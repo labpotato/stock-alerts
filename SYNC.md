@@ -21,6 +21,8 @@ tests in `tests/` check the rules on real bars.
 | `.KS` / `.SI` | a bar dated today Singapore time is not settled |
 | Reversed currency pairs | `SGDUSD = 1 / USDSGD`, `KRWSGD = 1 / SGDKRW`, high and low swapped. Yahoo quotes `KRWSGD=X` rounded to 0.0010, which is unusable |
 | Currency settled day | the last completed bar of Yahoo's currency day (London time) |
+| Splits and reverse splits | all prices are in post-split shares. Yahoo's split events (`events=split`) are read; rows before a split are divided by k (k = new shares per old share) only if Yahoo has not already adjusted them, judged by whether the last pre-split close is nearer k x the first post-split price than the price itself (`signals.adjust_splits`) |
+| Split-like jump | a live price at least a third away from the last close and within 4 % of a split ratio (3:2, 2 ... 100, and reverse) is held, never alerted, until the refetched history agrees with it. Holdings dated before a split count shares x k until the secret is updated |
 
 On 2026-11-04 the four test tickers had 20 real bars with `open == high` (BOTZ alone had 12).
 The old post-close rule would have deleted them; this rule keeps them.

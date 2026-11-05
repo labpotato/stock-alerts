@@ -38,7 +38,27 @@ def holdings():
         return None
 
 
-H = holdings()
+H0 = holdings()
+H = H0
+
+
+def apply_split_holdings(state):
+    """A split after the holdings date multiplies that ticker's share count by k, so the book,
+    the AI-group weight and order sizes stay right until the secret is updated."""
+    global H
+    if not H0:
+        H = H0
+        return
+    h = json.loads(json.dumps(H0))
+    as_of = str(h.get("as_of") or "")
+    for t, m in (state.get("splits") or {}).items():
+        info = h.get("tickers", {}).get(t)
+        if not info or not info.get("shares"):
+            continue
+        for sd, v in m.items():
+            if sd > as_of:
+                info["shares"] = info["shares"] * v["k"]
+    H = h
 
 
 # ---------------------------------------------------------------- http
@@ -66,7 +86,8 @@ def chart(t, rng, iv, prepost=False):
     inv = (CFG.get("fx", {}).get(t) or {}).get("invert_of")
     src = inv or t
     u = (f"https://query1.finance.yahoo.com/v8/finance/chart/{src}"
-         f"?range={rng}&interval={iv}" + ("&includePrePost=true" if prepost else ""))
+         f"?range={rng}&interval={iv}" + ("&includePrePost=true" if prepost else "")
+         + ("&events=split" if iv == "1d" else ""))
     if u not in _MEMO:
         _MEMO[u] = get(u)["chart"]["result"][0]
     return invert_chart(_MEMO[u]) if inv else _MEMO[u]
@@ -125,8 +146,19 @@ def market(t):
     return "us"
 
 
-def daily_bars(t):
-    """Yahoo 1y daily bars as dicts, after the shared hygiene rules (signals.hygiene)."""
+def split_events(r, day):
+    """[(date, k)] from Yahoo's chart events; k = new shares per old share."""
+    out = []
+    for e in ((r.get("events") or {}).get("splits") or {}).values():
+        n, dn = e.get("numerator"), e.get("denominator")
+        if e.get("date") is not None and n and dn and n != dn:
+            out.append((day(e["date"]), n / dn))
+    return sorted(out)
+
+
+def daily_bars(t, ref_px=None):
+    """Yahoo 1y daily bars as dicts, split-adjusted (signals.adjust_splits), after the shared
+    hygiene rules (signals.hygiene). ref_px is the live price, used for a split effective today."""
     r = chart(t, "1y", "1d")
     q = r["indicators"]["quote"][0]
     meta = r["meta"]
@@ -136,6 +168,13 @@ def daily_bars(t):
     bars = [{"date": day(ts), "o": o, "h": h, "l": l, "c": c, "v": v}
             for ts, o, h, l, c, v in zip(r["timestamp"], q["open"], q["high"], q["low"], q["close"], vol)]
     fx = is_fx(t)
+    splits = [] if fx else split_events(r, day)
+    if splits:
+        # With no live price passed in, Yahoo's latest price stands in (the official close, in the evening).
+        bars, applied = SG.adjust_splits(bars, splits, ref_px or meta.get("regularMarketPrice"))
+        for sd, k in applied:
+            print(f"  {t}: applied {SG.split_text(k)} of {sd} to the older bars", file=sys.stderr)
+    SPLITS_SEEN[t] = splits
     kept, dropped = SG.hygiene(bars, volume_rule=not fx,
                                flat_rule=t not in CFG.get("keep_flat_bars", []),
                                partial_tape=not fx)
@@ -144,11 +183,14 @@ def daily_bars(t):
     return kept, meta, day
 
 
-def settled_rows(t, settled=False):
+SPLITS_SEEN = {}
+
+
+def settled_rows(t, settled=False, ref_px=None):
     """Daily OHLC through the last COMPLETED session.
     settled=False (real-time polls): the live price stands in for the current session's bar.
     settled=True  (evening check): today's bar is the official close, never an after-hours price."""
-    bars, meta, day = daily_bars(t)
+    bars, meta, day = daily_bars(t, ref_px)
     if not bars:
         return None
     off = meta.get("gmtoffset", 0)
@@ -224,7 +266,7 @@ def rsi_acc(c, n=14):
     return ag, al
 
 
-def build_cache(tickers, market_date=None):
+def build_cache(tickers, market_date=None, ref_px=None):
     """Refresh each ticker's settled-bar state at most ONCE per market day.
     Attempts are tracked per ticker, so one failing symbol cannot force the
     other fifteen to refetch on every poll."""
@@ -241,12 +283,15 @@ def build_cache(tickers, market_date=None):
                 errs.append(f"{t}: {have.get('_err', 'no bars')} (retry tomorrow)")
             continue
         try:
-            sr = settled_rows(t)
+            sr = settled_rows(t, ref_px=(ref_px or {}).get(t))
             if not sr:
                 raise ValueError("fewer than 40 usable daily bars")
             d = derive(sr["rows"], sr["dates"])
             d["ag"], d["al"] = rsi_acc([r[3] for r in sr["rows"]])
             d["last"] = sr["last"]
+            today_ = dt.datetime.fromtimestamp(time.time(), dt.timezone.utc).date()
+            d["splits"] = [[sd.isoformat(), k] for sd, k in SPLITS_SEEN.get(t, [])
+                           if (today_ - sd).days <= 60]
             d["_tried"] = market_date
             cache[t] = d
             fresh += 1
@@ -1076,7 +1121,7 @@ def poll(state):
         # so an after-hours cross is not reported again at the next pre-market.
         # The evening check may run after midnight, so yesterday's alert list is kept for it.
         last = {"day": state.get("day"), "sent": state.get("sent", [])}
-        keep = {k: state.get(k) for k in ("obs", "fx_version", "settled_done", "paused")}
+        keep = {k: state.get(k) for k in ("obs", "fx_version", "settled_done", "paused", "splits")}
         state.clear()
         state.update({"day": today, "sent": [], "pending": {}, "last_day": last})
         state.update({k: v for k, v in keep.items() if v is not None})
@@ -1135,8 +1180,15 @@ def poll(state):
             if px is None:
                 errs.append(f"{t}: no price")
                 continue
-            # Reject an obviously broken extended-hours print on a thin name.
             pc = d["c"][-1]
+            # A jump that matches a split ratio: the cached bars may predate a split.
+            if not is_fx(t) and SG.split_like(pc, px):
+                d = split_check(t, d, px, state, today)
+                if d is None:
+                    errs.append(f"{t}: held, {pc:.4g} -> {px:.4g} looks like a split Yahoo has not confirmed")
+                    continue
+                pc = d["c"][-1]
+            # Reject an obviously broken extended-hours print on a thin name.
             mv = abs(px / pc - 1)
             if tsess in ("PRE", "POST") and t in THIN and mv > 0.15 and lv["n"] < 5:
                 errs.append(f"{t}: suspect {mv*100:.0f}% extended print on {lv['n']} bars, ignored")
@@ -1185,8 +1237,75 @@ def valuation_only():
             and (H["tickers"][t].get("shares") or 0)]
 
 
+SPLIT_NOTES = []
+
+
+def record_split(t, sd, k, state, px=None, old_close=None):
+    """Remember a split once; returns the plain-language note to send, or None if already told."""
+    m = state.setdefault("splits", {}).setdefault(t, {})
+    if sd in m:
+        return None
+    m[sd] = {"k": k}
+    state.setdefault("obs", {}).pop(t, None)   # the last reading was in pre-split prices
+    nm = esc(full_name(t))
+    k_txt = f"{k:g}" if k >= 1 else f"1/{1/k:g}"
+    lines = [f"✂️ <b>{esc(label(t))} — {nm}</b>",
+             f"{SG.split_text(k).capitalize()}, effective {sd}.", ""]
+    if k >= 1:
+        lines.append(f"Each old share became {k:g} shares at about 1/{k:g} of the price. Nothing was lost.")
+    else:
+        lines.append(f"Every {1/k:g} old shares became 1 share at about {1/k:g}x the price. Nothing was lost.")
+    if px and old_close:
+        lines.append(f"Now {money(t, px)}. The last close of {money(t, old_close)} is "
+                     f"{money(t, old_close / k)} in new shares, so the real move is "
+                     f"{(px / (old_close / k) - 1) * 100:+.1f}%.")
+    lines += ["", "I've adjusted the price history, so the price range and momentum are back to normal.",
+              f"Ignore any 'unusual move' or drop alert for {esc(label(t))} today; the split caused it."]
+    info = (H0 or {}).get("tickers", {}).get(t) or {}
+    if info.get("shares") and str(H0.get("as_of") or "") < sd:
+        lines.append(f"\nYour holdings secret is dated {esc(str(H0.get('as_of')))}, before the split, so I'm "
+                     f"counting your {esc(label(t))} shares x{k_txt} until you update it (new share count and as_of date).")
+    return "\n".join(lines)
+
+
+def split_check(t, d, px, state, today):
+    """The live price is a split ratio away from the cached close. Refetch the daily bars with the
+    live price as the post-split reference (signals.adjust_splits). Returns the fresh bars once
+    they agree with the live price; otherwise None, and the ticker is held with a one-time note."""
+    pc = d["c"][-1]
+    guess = SG.split_like(pc, px)
+    cache, _, _ = build_cache([t], f"split:{today}:{sig6(px)}", ref_px={t: px})
+    nd = cache.get(t)
+    if isinstance(nd, dict) and "ema" in nd and not SG.split_like(nd["c"][-1], px):
+        sp = nd.get("splits") or []
+        sd, k = (sp[-1][0], sp[-1][1]) if sp else (today, guess)
+        note = record_split(t, sd, k, state, px, pc)
+        if note:
+            SPLIT_NOTES.append(note)
+        CTX.setdefault("closes", {})[t] = nd["c"][-1]
+        apply_split_holdings(state)
+        return nd
+    key = f"{t}:SPLITHOLD"
+    if key not in state.setdefault("sent", []):
+        state["sent"].append(key)
+        SPLIT_NOTES.append(
+            f"⚠️ <b>{esc(label(t))} — {esc(full_name(t))}</b>\n"
+            f"Price {money(t, px)} against {money(t, pc)} at the last close ({(px / pc - 1) * 100:+.0f}%).\n\n"
+            f"That matches a {SG.split_text(guess)}, but Yahoo hasn't confirmed one yet. I'm holding "
+            f"signals and unusual-move alerts for {esc(label(t))} until it does. "
+            f"If there was no split, this is a real move: check the news.")
+    return None
+
+
 def set_context(cache, state):
     """Prices for the order gate. Only public prices go in here; holdings stay in memory."""
+    for t, v in cache.items():
+        for sd, k in (v.get("splits") or []) if isinstance(v, dict) else []:
+            if (CTX_TODAY() - dt.date.fromisoformat(sd)).days <= 10:
+                note = record_split(t, sd, k, state)
+                if note:
+                    SPLIT_NOTES.append(note)
+    apply_split_holdings(state)
     CTX["closes"] = {t: v["c"][-1] for t, v in cache.items() if isinstance(v, dict) and v.get("c")}
     u = cache.get("USDSGD=X")
     CTX["usdsgd"] = u["c"][-1] if isinstance(u, dict) and u.get("c") else CTX.get("usdsgd")
@@ -1276,6 +1395,10 @@ def decide(rows, alerts, state, sess):
 
 # ---------------------------------------------------------------- evening check (settled pass)
 SETTLED_FROM = (16, 15)        # New York time; the official close is normally in by then
+
+
+def CTX_TODAY():
+    return dt.datetime.fromtimestamp(time.time(), dt.timezone.utc).date()
 
 
 def et_now():
@@ -1503,7 +1626,7 @@ def main():
         return
     rows, sess, alerts, errs, want_list = res
 
-    outbox = decide(rows, alerts, state, sess)
+    outbox = [(n, None) for n in SPLIT_NOTES] + decide(rows, alerts, state, sess)
     # Save memory BEFORE sending, so a crash mid-send can never cause a repeat.
     json.dump(state, open(STATE, "w"))
     for text, png in outbox:
@@ -1528,6 +1651,7 @@ def main():
 def evening(state, manual=False):
     """Try the evening check. Any run after 16:15 New York time attempts it until it succeeds,
     so a late or skipped GitHub schedule cannot lose the day."""
+    apply_split_holdings(state)
     try:
         msgs = settled_pass(state, manual=manual)
     except Exception as e:
