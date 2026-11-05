@@ -186,3 +186,65 @@ def settled_state(rows, dates):
         "prev": {"close": prev["c"], "ma3": prev["ma3"], "upper": prev["up"], "lower": prev["lo"],
                  "rsi": prev["rsi"], "date": str(dates[i - 1])},
     }
+
+
+# ---------------------------------------------------------------- stock splits and reverse splits
+SPLIT_MOVE = 0.33   # only a jump of at least a third is checked against split ratios
+SPLIT_TOL = 0.04    # a price ratio within 4 % of a split ratio "looks like" that split
+_SPLITS = sorted({float(k) for k in (3/2, 2, 5/2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 25, 30, 40, 50, 100)})
+SPLIT_RATIOS = sorted(set(_SPLITS) | {1 / k for k in _SPLITS})
+
+
+def split_like(old_px, new_px):
+    """The split ratio k (new shares per old share: 3 for a 3-for-1 split, 0.1 for a
+    1-for-10 reverse split) that would explain a move from old_px to new_px, else None."""
+    import math
+    if not old_px or not new_px or old_px <= 0 or new_px <= 0:
+        return None
+    r = old_px / new_px
+    if abs(math.log(r)) < math.log(1 / (1 - SPLIT_MOVE)):
+        return None
+    best = min(SPLIT_RATIOS, key=lambda k: abs(math.log(r / k)))
+    return best if abs(r / best - 1) < SPLIT_TOL else None
+
+
+def adjust_splits(bars, splits, ref_px=None):
+    """bars: oldest first, dicts with date, o, h, l, c, v. splits: [(date, k)].
+    Yahoo normally back-adjusts history for splits, but around the split day it can still serve
+    unadjusted rows. Rows before a split are divided by k only if they are still unadjusted, that is,
+    when the last pre-split close is nearer k x the first post-split price than the price itself.
+    The first post-split price is the first post-split bar's open (or close), else ref_px (the live
+    price, for a split that takes effect today). Volumes are multiplied by k.
+    Returns (bars, applied) where applied lists the (date, k) that were applied here."""
+    import math
+    applied = []
+    for sd, k in sorted(splits):
+        if not k or k <= 0 or abs(k - 1) < 1e-9:
+            continue
+        pre = [b for b in bars if b["date"] < sd]
+        post = [b for b in bars if b["date"] >= sd and (b.get("o") or b.get("c"))]
+        last = next((b["c"] for b in reversed(pre) if b.get("c")), None)
+        ref = (post[0].get("o") or post[0].get("c")) if post else ref_px
+        if not last or not ref:
+            continue
+        r = last / ref
+        if abs(math.log(r / k)) < abs(math.log(r)):
+            out = []
+            for b in bars:
+                if b["date"] < sd:
+                    b = dict(b, **{f: (b[f] / k if b.get(f) is not None else None) for f in ("o", "h", "l", "c")})
+                    if b.get("v") is not None:
+                        b["v"] = b["v"] * k
+                out.append(b)
+            bars = out
+            applied.append((sd, k))
+    return bars, applied
+
+
+def split_text(k):
+    """'3-for-1 split' or '1-for-10 reverse split'."""
+    from fractions import Fraction
+    f = Fraction(k).limit_denominator(100)
+    if f >= 1:
+        return f"{f.numerator}-for-{f.denominator} split"
+    return f"{f.numerator}-for-{f.denominator} reverse split"
