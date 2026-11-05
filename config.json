@@ -16,7 +16,8 @@
     "GLDM",
     "QQQ",
     "XLB",
-    "XLP"
+    "XLP",
+    "IQQ"
   ],
   "ai_group": [
     "GOOGL",
@@ -26,7 +27,8 @@
     "PLTR",
     "BE",
     "AIPO",
-    "BOTZ"
+    "BOTZ",
+    "IQQ"
   ],
   "ai_cap_pct": 30,
   "benchmark": "VOO",
@@ -36,7 +38,8 @@
     "GLDM",
     "ITA",
     "XLB",
-    "XLP"
+    "XLP",
+    "ES3.SI"
   ],
   "anomaly": {
     "sigma_single": 3.0,
@@ -67,9 +70,12 @@
     "GLDM": "SPDR Gold MiniShares Trust",
     "QQQ": "Invesco QQQ Trust (tracks the Nasdaq-100)",
     "XLB": "Materials Select Sector SPDR ETF",
-    "XLP": "Consumer Staples Select Sector SPDR ETF"
+    "XLP": "Consumer Staples Select Sector SPDR ETF",
+    "IQQ": "iShares Nasdaq 100 ETF",
+    "DIA": "SPDR Dow Jones Industrial Average ETF",
+    "SGOV": "iShares 0-3 Month Treasury Bond ETF"
   },
-  "_names_note": "Verified against Shibui general_info, 2026-11-03. ITA is not listed there, so its name is read live from Yahoo.",
+  "_names_note": "Verified against Shibui general_info (IQQ, DIA, SGOV added 2026-11-05). ITA, ES3.SI and the Korean listings are not listed there, so their names are read live from Yahoo.",
   "near_pct": 5.0,
   "fx": {
     "USDSGD=X": {
@@ -99,5 +105,23 @@
       "invert_of": "SGDKRW=X"
     }
   },
-  "near_pct_fx": 1.0
+  "near_pct_fx": 1.0,
+  "never_arm": [
+    "IQQ"
+  ],
+  "include_info_tickers": false,
+  "info_tickers": [
+    "ES3.SI",
+    "005930.KS",
+    "000660.KS",
+    "DIA"
+  ],
+  "keep_flat_bars": [
+    "ES3.SI"
+  ],
+  "currency": {
+    "ES3.SI": "SGD",
+    "005930.KS": "KRW",
+    "000660.KS": "KRW"
+  }
 }

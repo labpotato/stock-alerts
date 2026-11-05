@@ -1,24 +1,105 @@
 {
-  "_note": "TEMPLATE ONLY. Real numbers go in the HOLDINGS_JSON repository secret, never in this file.",
-  "_shape": "ai_group_now_pct = the AI group's current share of the book. order = the armed order text; the word BUY or SELL in it decides the direction gate.",
-  "ai_group_now_pct": 0,
+  "_note": "TEMPLATE ONLY, zeros. Paste the real version into the HOLDINGS_JSON repository secret; never commit it.",
+  "_shape": "as_of = date the share counts were last checked (YYYY-MM-DD); over 30 days old makes every Fires line say 'holdings stale'. cash_usd = free cash. sgov_floor_pct = the % of the book SGOV may not be sold below to fund a buy. min_order_usd = orders under this are 'within band'. ai_cap_pct = AI-group cap. Per ticker: shares, target_pct (% of total assets; omit or 0 for no target), group = core / ai / diversifier / cash / sgd. ES3.SI is priced in SGD and converted at USD/SGD.",
   "as_of": "YYYY-MM-DD",
+  "cash_usd": 0,
+  "sgov_floor_pct": 8,
+  "min_order_usd": 200,
+  "ai_cap_pct": 30,
   "tickers": {
-    "VOO":  {"shares": 0, "target": 0, "order": "not held"},
-    "GOOGL":{"shares": 0, "target": 0, "order": "not held"},
-    "NVDA": {"shares": 0, "target": 0, "order": "not held"},
-    "TSLA": {"shares": 0, "target": 0, "order": "not held"},
-    "PLTR": {"shares": 0, "target": 0, "order": "not held"},
-    "SOXX": {"shares": 0, "target": 0, "order": "not held"},
-    "BE":   {"shares": 0, "target": 0, "order": "not held"},
-    "AIPO": {"shares": 0, "target": 0, "order": "not held"},
-    "BOTZ": {"shares": 0, "target": 0, "order": "not held"},
-    "XLV":  {"shares": 0, "target": 0, "order": "not held"},
-    "XLF":  {"shares": 0, "target": 0, "order": "not held"},
-    "ITA":  {"shares": 0, "target": 0, "order": "not held"},
-    "GLDM": {"shares": 0, "target": 0, "order": "not held"},
-    "QQQ":  {"shares": 0, "target": 0, "order": "not held"},
-    "XLB":  {"shares": 0, "target": 0, "order": "not held"},
-    "XLP":  {"shares": 0, "target": 0, "order": "not held"}
+    "VOO": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "core"
+    },
+    "QQQ": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "core"
+    },
+    "GOOGL": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "ai"
+    },
+    "NVDA": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "ai"
+    },
+    "TSLA": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "ai"
+    },
+    "PLTR": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "ai"
+    },
+    "SOXX": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "ai"
+    },
+    "BE": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "ai"
+    },
+    "AIPO": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "ai"
+    },
+    "BOTZ": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "ai"
+    },
+    "IQQ": {
+      "shares": 0,
+      "group": "ai"
+    },
+    "XLV": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "diversifier"
+    },
+    "XLF": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "diversifier"
+    },
+    "ITA": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "diversifier"
+    },
+    "GLDM": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "diversifier"
+    },
+    "XLB": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "diversifier"
+    },
+    "XLP": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "diversifier"
+    },
+    "SGOV": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "cash"
+    },
+    "ES3.SI": {
+      "shares": 0,
+      "target_pct": 0,
+      "group": "sgd"
+    }
   }
 }

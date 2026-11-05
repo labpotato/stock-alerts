@@ -1,0 +1,23 @@
+name: Build test fixtures
+# One-off: Yahoo is reachable from GitHub but not from the development container.
+on:
+  workflow_dispatch:        # run by hand if the fixtures ever need rebuilding
+permissions:
+  contents: write
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python tools/make_fixtures.py
+      - name: Commit fixtures
+        run: |
+          git config user.name  "stock-alerts"
+          git config user.email "actions@github.com"
+          git add tests/fixtures
+          git diff --staged --quiet && exit 0
+          git commit -q -m "Add real Yahoo fixtures (through the 2026-11-04 session)"
+          git push -q

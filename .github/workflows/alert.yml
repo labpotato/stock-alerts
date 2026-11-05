@@ -5,13 +5,20 @@ on:
     # single call when US markets are shut, so a closed-market run is nearly free.
     # Doing it this way means no cron timezone arithmetic and no US daylight-saving edge.
     - cron: '*/10 * * * *'
+    # Evening check: 16:20 and 16:50 New York time (UTC 20:20/20:50 in summer, 21:20/21:50 in
+    # winter). watch.py checks the New York clock itself, so the off-season pair just exits.
+    - cron: '20,50 20,21 * * 1-5'
   workflow_dispatch:
     inputs:
       mode:
-        description: 'test = sample chart, digest = full list once, buy-watch = tickers close to a BUY, poll = normal'
+        description: 'test = sample chart, digest = full list once, buy-watch = close to a BUY, settled = evening check now, poll = normal'
         type: choice
         default: test
-        options: [test, digest, buy-watch, poll]
+        options: [test, digest, buy-watch, settled, announce, poll]
+      note:
+        description: 'announce only: the message to send (Telegram HTML)'
+        type: string
+        default: ''
 permissions:
   contents: write
 concurrency:
@@ -25,12 +32,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - name: Tests (no network; a failing test stops the run)
+        run: |
+          pip install -q pytest
+          python -m pytest -q tests
       - run: python watch.py
         env:
           TG_TOKEN:      ${{ secrets.TG_TOKEN }}
           TG_CHAT:       ${{ secrets.TG_CHAT }}
           HOLDINGS_JSON: ${{ secrets.HOLDINGS_JSON }}
-          MODE:          ${{ inputs.mode || 'poll' }}
+          MODE:          ${{ inputs.mode || (github.event.schedule == '20,50 20,21 * * 1-5' && 'settled') || 'poll' }}
+          NOTE:          ${{ inputs.note }}
       - name: Save state and publish status
         run: |
           git config user.name  "stock-alerts"
