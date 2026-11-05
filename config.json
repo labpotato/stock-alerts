@@ -109,12 +109,10 @@
   "never_arm": [
     "IQQ"
   ],
-  "include_info_tickers": false,
+  "include_info_tickers": true,
   "info_tickers": [
-    "ES3.SI",
     "005930.KS",
-    "000660.KS",
-    "DIA"
+    "000660.KS"
   ],
   "keep_flat_bars": [
     "ES3.SI"
@@ -123,5 +121,6 @@
     "ES3.SI": "SGD",
     "005930.KS": "KRW",
     "000660.KS": "KRW"
-  }
+  },
+  "_info_note": "Information only: alerts, no orders. Korean listings follow KRX hours (09:00-15:30 KST). ES3.SI and DIA can be added back here."
 }

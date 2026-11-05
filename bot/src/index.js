@@ -1,6 +1,6 @@
 // Cloudflare Worker entry: Telegram sends each message here (webhook).
 import Anthropic from "@anthropic-ai/sdk";
-import { answer, isAllowed } from "./bot.js";
+import { answer, dispatchAlerter, isAllowed } from "./bot.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -19,5 +19,10 @@ export default {
     // Reply to Telegram at once so it never re-sends the message; answer in the background.
     ctx.waitUntil(answer(env, update.message, { client, fetch: (u, o) => fetch(u, o) }));
     return new Response("ok");
+  },
+
+  // Every 10 minutes (wrangler.toml [triggers]): start one alerter run on GitHub.
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(dispatchAlerter(env, (u, o) => fetch(u, o)));
   },
 };

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { answer, compactStatus, isAllowed, requestParams, splitMessage, SYSTEM, MODEL } from "../src/bot.js";
+import { answer, compactStatus, dispatchAlerter, isAllowed, requestParams, splitMessage, SYSTEM, MODEL } from "../src/bot.js";
 
 const STATUS = JSON.parse(readFileSync(new URL("../../docs/status.json", import.meta.url)));
 const ENV = { TG_TOKEN: "t0k", TG_CHAT: "111", TG_WEBHOOK_SECRET: "s3cret",
@@ -128,4 +128,21 @@ test("nothing from the holdings secret reaches the Telegram message unless Claud
   await answer(ENV, MSG, h.deps);
   const out = JSON.stringify(h.tg);
   assert.ok(!out.includes("9876.5") && !out.includes("4321"));
+});
+
+test("the heartbeat starts one alerter run on GitHub, and does nothing without a token", async () => {
+  const calls = [];
+  const fake = async (url, init) => { calls.push({ url, init }); return { status: 204, text: async () => "" }; };
+  assert.deepEqual(await dispatchAlerter({ GH_DISPATCH_TOKEN: "ghp_x" }, fake), { ok: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.github.com/repos/labpotato/stock-alerts/actions/workflows/alert.yml/dispatches");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.headers.authorization, "Bearer ghp_x");
+  assert.ok(calls[0].init.headers["user-agent"]);                     // GitHub rejects requests without one
+  assert.deepEqual(JSON.parse(calls[0].init.body), { ref: "main", inputs: { mode: "poll" } });
+  calls.length = 0;
+  assert.equal((await dispatchAlerter({}, fake)).ok, false);
+  assert.equal(calls.length, 0);
+  const denied = async () => ({ status: 403, text: async () => "Resource not accessible" });
+  assert.deepEqual(await dispatchAlerter({ GH_DISPATCH_TOKEN: "bad" }, denied), { ok: false, status: 403 });
 });
