@@ -122,5 +122,14 @@
     "005930.KS": "KRW",
     "000660.KS": "KRW"
   },
-  "_info_note": "Information only: alerts, no orders. Korean listings follow KRX hours (09:00-15:30 KST). ES3.SI and DIA can be added back here."
+  "_info_note": "Information only: alerts, no orders. Korean listings follow KRX hours (09:00-15:30 KST). ES3.SI and DIA can be added back here.",
+  "_splits_note": "Splits confirmed from the issuer, for when Yahoo has not published them yet: {ticker: [[effective date, new shares per old share]]}. SOXX 3-for-1 from 2026-11-05: iShares fund page, OCC memo 60000, SEC Form 497.",
+  "splits": {
+    "SOXX": [
+      [
+        "2026-11-05",
+        3
+      ]
+    ]
+  }
 }

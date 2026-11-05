@@ -98,3 +98,11 @@ def test_split_like_only_matches_big_jumps_near_split_ratios():
     assert SG.split_like(100, 48) is None       # -52 %: not within 4 % of a 2-for-1
     assert SG.split_like(100, 80) is None       # a 20 % move is never checked
     assert SG.split_text(3) == "3-for-1 split" and SG.split_text(0.1) == "1-for-10 reverse split"
+
+
+def test_split_listed_in_config_when_yahoo_has_no_event_yet(make_watch):
+    w, m, state, close = _setup(make_watch, adjusted=False, event=False)
+    w.CFG["splits"] = {"GOOGL": [["2026-11-05", 3]]}
+    res, _, errs = _poll(w, state)
+    _check_fixed(w, state, res, close)
+    assert not any("GOOGL: held" in e for e in errs)
