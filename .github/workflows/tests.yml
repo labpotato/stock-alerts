@@ -13,3 +13,8 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install -q pytest
       - run: python -m pytest -q tests
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Telegram Q&A bot tests
+        working-directory: bot
+        run: npm ci --no-audit --no-fund && npm test

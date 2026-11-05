@@ -1,0 +1,72 @@
+name: Deploy Telegram Q&A bot
+# Deploys bot/ to Cloudflare Workers, copies the bot's secrets from this repository's secrets,
+# and points the Telegram bot's webhook at it. Does nothing until the Cloudflare secrets exist.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [bot/**, .github/workflows/bot-deploy.yml]
+permissions:
+  contents: read
+concurrency:
+  group: bot-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: bot
+    env:
+      CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ANTHROPIC_API_KEY:     ${{ secrets.ANTHROPIC_API_KEY }}
+      TG_TOKEN:              ${{ secrets.TG_TOKEN }}
+      TG_CHAT:               ${{ secrets.TG_CHAT }}
+      HOLDINGS_JSON:         ${{ secrets.HOLDINGS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the secrets are in place
+        id: ready
+        run: |
+          missing=""
+          for v in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ANTHROPIC_API_KEY TG_TOKEN TG_CHAT; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::Bot not deployed yet. Missing repository secrets:$missing"
+            echo "go=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.go == 'yes'
+        with: {node-version: '22'}
+      - name: Install and test
+        if: steps.ready.outputs.go == 'yes'
+        run: npm ci --no-audit --no-fund && npm test
+      - name: Deploy the Worker
+        if: steps.ready.outputs.go == 'yes'
+        id: deploy
+        run: |
+          npx wrangler deploy 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          [ -n "$url" ] || { echo "::error::No workers.dev address in the deploy output. Open the Workers page in Cloudflare once to choose a workers.dev subdomain, then re-run."; exit 1; }
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Set the bot's secrets and connect Telegram
+        if: steps.ready.outputs.go == 'yes'
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          WH=$(openssl rand -hex 24); echo "::add-mask::$WH"
+          printf %s "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY >/dev/null
+          printf %s "$TG_TOKEN"          | npx wrangler secret put TG_TOKEN >/dev/null
+          printf %s "$TG_CHAT"           | npx wrangler secret put TG_CHAT >/dev/null
+          printf %s "$WH"                | npx wrangler secret put TG_WEBHOOK_SECRET >/dev/null
+          if [ -n "$HOLDINGS_JSON" ]; then printf %s "$HOLDINGS_JSON" | npx wrangler secret put HOLDINGS_JSON >/dev/null; fi
+          curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/setWebhook" \
+            --data-urlencode "url=${URL}" --data-urlencode "secret_token=${WH}" \
+            --data-urlencode 'allowed_updates=["message"]' -d drop_pending_updates=true \
+            | python3 -c "import json,sys; r=json.load(sys.stdin); print('Telegram webhook set:', r.get('ok'), r.get('description',''))"
+          echo "::notice::Bot is live. Send /start to your bot in Telegram."
