@@ -61,12 +61,14 @@ def series(rows):
 
 def states(prev_c, prev_ma3, prev_up, prev_lo, prev_rsi, c, ma3, up, lo, rs):
     """The two legs.
-    Keltner BUY  = prior MA3 <= prior lower AND current MA3 > current lower.
+    Keltner BUY  = prior MA3 <= prior lower AND current MA3 > current lower AND current MA3 > prior MA3
+                   (the 3-day average itself must rise: a band that falls under a falling price is not
+                   a recovery; rule added 2026-11-05).
     Keltner SELL = prior close > prior upper AND current close <= current upper.
     WATCH BUY = close < lower; WATCH SELL = close > upper.
     RSI BUY = prior < 30 and current >= 30; SELL = prior > 70 and current <= 70."""
     k = "NONE"
-    if prev_ma3 is not None and prev_ma3 <= prev_lo and ma3 > lo:
+    if prev_ma3 is not None and prev_ma3 <= prev_lo and ma3 > lo and ma3 > prev_ma3:
         k = "BUY"
     elif prev_c > prev_up and c <= up:
         k = "SELL"

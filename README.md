@@ -3,12 +3,13 @@
 A GitHub Actions job that watches Dongmin's tickers and sends Telegram alerts. It trades nothing.
 
 Rules are **Keltner on MA3** and **RSI 30/70 recross**, applied to **real-time prices**. The bands,
-MA3 and RSI are recalculated at the live price on every reading, and a signal is a cross between two
-consecutive readings: for example a SELL when the price was above the upper band at the last reading
-and is at or below it now. Pre-market and after-hours prices count the same way.
+MA3 and RSI are recalculated at the live price on every reading, and each reading asks: *if today
+closed at this price, would the daily rule fire against yesterday's settled close?* Pre-market and
+after-hours prices count the same way. A Keltner BUY also needs the 3-day average to be higher than at
+the last close, so a band that falls under a falling price is not a BUY (rule added 2026-11-05).
 
-`config.json` → `"cross_reference"` switches the definition: `"last_poll"` (real-time, the default) or
-`"prev_close"` (the older rule, a cross against yesterday's settled close).
+`config.json` → `"cross_reference"`: `"prev_close"` (the default since 2026-11-05) or `"last_poll"`
+(a cross between two consecutive readings, which whipsawed on volatile days).
 
 ## What it sends
 
@@ -17,14 +18,14 @@ Every message is about **one ticker** (or one group finding) and comes with a ch
 | When | What |
 |---|---|
 | A measure gives a BUY or SELL at the live price | One message: ticker, full name, price at that moment, which of the two measures agree (e.g. SELL + SELL → STRONG SELL), the reasons in plain words, what your plan says, and a chart |
-| A ticker moves far more than it usually does | One "unusual move" message with a chart |
+| A ticker moves far more than it usually does | One "unusual move" message with a chart. On a day the market itself moves unusually, one "whole market" message instead, and a ticker only if it moves unusually *compared with the market* |
 | Your AI stocks split from the S&P 500, or most of the list falls together | One group message with a bar chart |
 
 The full list is **not** sent automatically. Run the workflow with `digest` if you want it once.
 
 **No repeats.** Each measure can give a BUY or SELL for a ticker once per trading day. If both give
 it at the same moment you get one STRONG message; if the second agrees later the same day you get one
-upgrade to STRONG, and then nothing more for that ticker and side until the next trading day.
+short "Now STRONG" line (no second chart), and then nothing more for that ticker and side until the next trading day.
 
 ## Two kinds of signal
 
@@ -32,7 +33,7 @@ upgrade to STRONG, and then nothing more for that ticker and side until the next
 |---|---|---|
 | When | every ~10 minutes: pre-market, market hours, after hours | once per trading day, after 16:15 New York time |
 | Prices | live, including pre- and post-market | settled daily bars and the official close only |
-| A signal is | a cross between two consecutive live readings | a cross from yesterday's close to today's close |
+| A signal is | a cross from yesterday's close to the live price | a cross from yesterday's close to today's close |
 | Label | "REAL-TIME, pre-market / market open / after hours" | ✅ CONFIRMED at close · ⚠️ FADED by close · 🔔 CLOSE SIGNAL (not seen intraday) · ⚖️ CONFLICT at close |
 | Orders | says whether a matching close *would* fire your order | the only place an order is sized: "Fires: BUY 12 shares (≈$960), paid from cash" |
 
