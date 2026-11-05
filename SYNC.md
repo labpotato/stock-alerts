@@ -39,7 +39,7 @@ The old post-close rule would have deleted them; this rule keeps them.
 
 | Leg | BUY | SELL | WATCH BUY | WATCH SELL |
 |---|---|---|---|---|
-| Keltner | prior MA3 ≤ prior lower AND MA3 > lower | prior close > prior upper AND close ≤ upper | close < lower | close > upper |
+| Keltner | prior MA3 ≤ prior lower AND MA3 > lower AND MA3 > prior MA3 (added 2026-11-05) | prior close > prior upper AND close ≤ upper | close < lower | close > upper |
 | RSI | prior < 30 AND current ≥ 30 | prior > 70 AND current ≤ 70 | < 30 | > 70 |
 
 - **STRONG** = both legs fired the same side within the last 3 sessions, at least one today.
@@ -76,8 +76,7 @@ does not, by Dongmin's choice on 2026-11-05:
 
 | Real-time rule | Effect |
 |---|---|
-| A signal is a cross between two consecutive real-time readings (~10 minutes apart) | A cross that reverses before the close (QQQ, 4 Nov) alerts in real time but not at the close |
-| The last reading, including after hours, carries over to the next morning | An after-hours move can pre-empt the next day's cross (BOTZ, 3-4 Nov) |
+| A live price is judged against yesterday's settled close, as if today closed there (since 2026-11-05; before, consecutive readings were compared and whipsawed) | A cross that reverses before the close alerts in real time but is FADED at the close |
 | Pre- and post-market highs and lows count in the live bar | The live band can be wider than the settled band |
 
 These differences are expected, and each one is labelled. The **evening check** (settled pass) runs

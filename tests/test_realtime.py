@@ -1,33 +1,37 @@
 """Spec tests 5-7, adapted to the choices made on 2026-11-05:
-  - the real-time reference carries over from the last after-hours reading (continuous);
+  - a live reading is judged against the last settled close (the daily rule at the live price);
   - pre- and post-market highs and lows count in the live bar, so they can widen the band;
   - the evening check, from settled closes only, catches what real-time readings miss."""
 import signals as SG
 from conftest import et
 
 
-def test_5_after_hours_carries_over_and_the_evening_check_still_finds_the_botz_buy(make_watch):
+def test_5_live_readings_are_judged_against_the_last_settled_close(make_watch):
+    """Since 2026-11-05 (cross_reference = prev_close) a real-time reading asks: if today closed at
+    this price, would the daily rule fire? A 3 Nov after-hours print is not the reference on 4 Nov."""
     w, m = make_watch(tickers=("QQQ", "BOTZ"))
+    assert w.REALTIME is False
     state = {"sent": [], "pending": {}, "obs": {}}
-    # 3 Nov after hours: BOTZ trades at 32.50.
     m.now, m.prices = et(2026, 11, 3, 18, 0), {"BOTZ": 32.50}
     res, sess, _ = w.poll(state)
     assert sess == "POST"
-    rows = res[0]
-    w.decide(rows, [], state, sess)
-    assert state["obs"]["BOTZ"]["px"] == 32.50
-    # 4 Nov, first reading of the day: compared with last night's after-hours reading.
+    w.decide(res[0], [], state, sess)
     m.now, m.prices = et(2026, 11, 4, 9, 45), {"BOTZ": 32.60}
     res, sess, _ = w.poll(state)
     botz = next(o for o in res[0] if o["t"] == "BOTZ")
-    assert botz["ref"]["px"] == 32.50
+    assert abs(botz["ref"]["px"] - 32.32) < 0.01                       # the 3 Nov settled close
+    assert botz["ev"]["k"] == "BUY"                                    # 3 Nov MA3 under the band, now above and rising
     w.decide(res[0], [], state, sess)
-    assert not any(k.startswith("BOTZ:BUY") for k in state["sent"])     # the real-time reading missed it
-    # 4 Nov evening check, settled closes only: the BUY is reported as seen only at the close.
+    assert "BOTZ:BUY:k" in state["sent"]
+    # A second reading the same day does not repeat it.
+    m.now, m.prices = et(2026, 11, 4, 10, 15), {"BOTZ": 32.65}
+    res, sess, _ = w.poll(state)
+    assert not [t for t, _ in w.decide(res[0], [], state, sess) if "BOTZ" in t.split("\n")[0]]
+    # The evening check, from settled closes only, confirms it.
     m.now, m.prices = et(2026, 11, 4, 16, 30), {}
     msgs = w.settled_pass(state)
     heads = [t.split("\n")[0] for t, _ in msgs]
-    assert any("CLOSE SIGNAL (not seen intraday)" in h and "BOTZ" in h for h in heads), heads
+    assert any("BOTZ" in h and "CONFIRMED" in h for h in heads), heads
     st = w.read_status()["settled"]["tickers"]["BOTZ"]
     assert st["k_state"] == "BUY" and st["knife_edge"] is True
 

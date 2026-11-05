@@ -17,9 +17,9 @@ STATUS = os.path.join(DATA, "docs", "status.json")
 UA = {"User-Agent": "Mozilla/5.0 (compatible; stock-alerts/2)"}
 AN = CFG["anomaly"]
 THIN = set(CFG.get("thin", []))
-# "last_poll": a signal is a cross between two consecutive real-time readings (the rule).
-# "prev_close": the original definition, a cross versus the previous settled daily close.
-REALTIME = CFG.get("cross_reference", "last_poll") == "last_poll"
+# "prev_close" (default since 2026-11-05): the daily rule at the live price, against the last settled close.
+# "last_poll": a cross between two consecutive real-time readings (whipsawed on volatile days).
+REALTIME = CFG.get("cross_reference", "prev_close") == "last_poll"
 CONFIRM_THIN = CFG.get("confirm_thin_extended", True)
 
 
@@ -610,6 +610,22 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     return "\n".join(lines).replace("\n\n\n", "\n\n"), png
 
 
+def upgrade_message(o, side, legs, earlier, sess):
+    """The second measure agrees later the same day: one short line, no second full alert."""
+    t, ev = o["t"], o["ev"]
+    dot = "🟢" if side == "BUY" else "🔴"
+    new, old = LEG[legs[0]], LEG[earlier[0]]
+    lines = [f"{dot}{dot} <b>Now STRONG {side} — {label(t)}</b>",
+             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · REAL-TIME, {sess_text(t, sess)}", "",
+             f"{new} now also says {side}, agreeing with {old.lower()} earlier today. "
+             f"Both measures say {side}."]
+    e = o.get("edge") or {}
+    if any(e.get(f"knife_{l}") for l in legs):
+        lines += ["", knife_line(e, legs)]
+    lines += ["", f"<b>{'What it means' if is_fx(t) else 'Your plan'}:</b> {plan_text(t, side)}"]
+    return "\n".join(lines)
+
+
 def knife_line(e, legs):
     bits = []
     if "k" in legs and e.get("knife_k"):
@@ -680,9 +696,36 @@ def near_buy(rows, sess):
 
 
 # ---------------------------------------------------------------- unusual movement
+def market_move(bench):
+    """The benchmark's own move today and over 3 days, in %, and whether today's move is unusual."""
+    if not bench or not bench["d"].get("sigma"):
+        return None
+    d, px, sig = bench["d"], bench["px"], bench["d"]["sigma"]
+    b1 = (px / d["c"][-1] - 1) * 100
+    c6 = d.get("closes60") or []
+    b3 = (px / c6[-3] - 1) * 100 if len(c6) >= 3 else None
+    return {"b1": b1, "b3": b3, "unusual": abs(b1 / 100 / sig) >= AN["sigma_single_with_abs"]}
+
+
 def anomalies(rows, bench):
-    """Each finding is its own message: dict(key, kind, ticker, text)."""
+    """Each finding is its own message: dict(key, kind, ticker, text).
+    When the market itself (the benchmark) has an unusual day, one market message is sent and a
+    stock gets its own message only if it moves unusually compared with the market."""
     out = []
+    mk = market_move(bench)
+    rel = bool(mk and mk["unusual"])
+    bn = CFG["benchmark"]
+    if rel:
+        moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows if o["t"] in CFG["tickers"]]
+        side = "down" if mk["b1"] < 0 else "up"
+        n = sum(1 for m in moves if (m < 0) == (mk["b1"] < 0) and abs(m) >= AN["breadth_move_pct"])
+        out.append({"key": "anom:market", "kind": "breadth", "ticker": None, "period": 1,
+                    "title": f"The whole market is {side} sharply today",
+                    "text": (f"The S&amp;P 500 ({bn}) is <b>{mk['b1']:+.1f}%</b> today, an unusually big day for "
+                             f"the market itself. <b>{n} of your {len(moves)} stocks</b> are {side} more than "
+                             f"{AN['breadth_move_pct']:.0f}%.\n\nWhen everything moves together it is the market, "
+                             f"not one company. I'll only message you about a stock today if it moves "
+                             f"unusually <i>compared with the market</i>.")})
     for o in rows:
         t, d, px, sig = o["t"], o["d"], o["px"], o["d"].get("sigma")
         pc = d["c"][-1]
@@ -693,9 +736,23 @@ def anomalies(rows, bench):
         o["z"] = z
         usual = sig * 100
         floor = AN.get("abs_floor_pct_fx", 1.0) if is_fx(t) else AN["abs_floor_pct"]
-        big = abs(z) >= AN["sigma_single"]
-        mid = abs(z) >= AN["sigma_single_with_abs"] and abs(mv) >= floor
-        if big or mid:
+        vs = rel and not is_fx(t)
+        if vs and t == bn:
+            continue
+        x = mv - mk["b1"] if vs else mv               # the part of the move the market doesn't explain
+        zx = x / 100 / sig
+        big = abs(zx) >= AN["sigma_single"]
+        mid = abs(zx) >= AN["sigma_single_with_abs"] and abs(x) >= floor
+        if (big or mid) and vs:
+            out.append({"key": f"anom:move:{t}", "kind": "move", "ticker": t, "shade": 0,
+                        "title": f"Unusual move — {label(t)}", "chart_head": "Unusual move vs the market",
+                        "note": f"{'up' if mv > 0 else 'down'} {abs(mv):.1f}% today, market {mk['b1']:+.1f}%",
+                        "text": (f"<b>{rate(t, px)}</b>, {'up' if mv > 0 else 'down'} <b>{abs(mv):.1f}%</b> today, "
+                                 f"while the market is {mk['b1']:+.1f}%.\n\nSo it is moving "
+                                 f"<b>{abs(x):.1f} points {'better' if x > 0 else 'worse'} than the market</b>, "
+                                 f"about {abs(zx):.0f} times its usual daily move. Something specific may be "
+                                 f"happening with this one; worth checking the news.")})
+        elif big or mid:
             out.append({"key": f"anom:move:{t}", "kind": "move", "ticker": t, "shade": 0,
                         "title": f"Unusual move — {label(t)}", "chart_head": "Unusual move",
                         "note": f"{'up' if mv > 0 else 'down'} {abs(mv):.1f}% today",
@@ -705,8 +762,11 @@ def anomalies(rows, bench):
                                  f"happening with this one; worth checking the news.")})
         c6 = d.get("closes60") or []
         if len(c6) >= 3:
-            run = px / c6[-3] - 1
+            raw = run = px / c6[-3] - 1
+            if vs and mk["b3"] is not None:
+                run = raw - mk["b3"] / 100            # compared with the market's own 3-day move
             if abs(run / sig) >= AN["sigma_run3"] and abs(run * 100) >= floor:
+                run = raw
                 out.append({"key": f"anom:run:{t}", "kind": "run", "ticker": t, "shade": 3,
                             "title": f"Unusual 3-day {'rise' if run > 0 else 'drop'} — {label(t)}",
                             "chart_head": f"Unusual 3-day {'rise' if run > 0 else 'drop'}",
@@ -715,7 +775,6 @@ def anomalies(rows, bench):
                                      f"over the last 3 trading days.\n\nIt normally moves about {usual:.1f}% "
                                      f"a day, so a 3-day move this size is rare for it.")})
     ai = [o for o in rows if o["t"] in CFG["ai_group"]]
-    bn = CFG["benchmark"]
     if ai and bench:
         g1 = sum((o["px"] / o["d"]["c"][-1] - 1) * 100 for o in ai) / len(ai)
         b1 = (bench["px"] / bench["d"]["c"][-1] - 1) * 100
@@ -741,7 +800,7 @@ def anomalies(rows, bench):
                                      f"{abs(g5-bv):.1f} points.\n\nMoney appears to be moving "
                                      f"{'into' if g5 > bv else 'out of'} AI-related names.")})
     moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows if o["t"] in CFG["tickers"]]
-    if moves:
+    if moves and not rel:
         dn = sum(1 for m in moves if m <= -AN["breadth_move_pct"])
         if dn / len(moves) >= AN["breadth_frac"]:
             out.append({"key": "anom:breadth:ALL", "kind": "breadth", "ticker": None, "period": 1,
@@ -1072,7 +1131,9 @@ def write_status(rows, sess, alerts, errs, state=None):
         "tickers": {},
         "anomalies": [a["title"] for a in alerts],
         "errors": errs,
-        "note": "Real-time states: a signal is a cross between consecutive readings. Nothing is traded.",
+        "note": ("Real-time states: the daily rule at the live price, against the last settled close. "
+                 "Nothing is traded.") if not REALTIME else
+                "Real-time states: a signal is a cross between consecutive readings. Nothing is traded.",
         "cross_reference": "last_poll" if REALTIME else "prev_close",
     }
     days = sorted({o["d"].get("last") for o in rows if o["d"].get("last")})
@@ -1377,7 +1438,10 @@ def decide(rows, alerts, state, sess):
             earlier = [l for l in ("k", "r") if l not in legs and done(t, side, l)]
             for l in legs:
                 sent.append(f"{t}:{side}:{l}")
-            out.append(signal_message(o, side, legs, earlier, o.get("sess", sess)))
+            if earlier:     # the other measure already sent the full alert today: a short upgrade
+                out.append((upgrade_message(o, side, legs, earlier, o.get("sess", sess)), None))
+            else:
+                out.append(signal_message(o, side, legs, earlier, o.get("sess", sess)))
 
     # 3. Unusual movement, one message each.
     for a in alerts:
