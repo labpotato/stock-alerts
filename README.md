@@ -26,6 +26,24 @@ The full list is **not** sent automatically. Run the workflow with `digest` if y
 it at the same moment you get one STRONG message; if the second agrees later the same day you get one
 upgrade to STRONG, and then nothing more for that ticker and side until the next trading day.
 
+## Two kinds of signal
+
+| | REAL-TIME alert | Evening check |
+|---|---|---|
+| When | every ~10 minutes: pre-market, market hours, after hours | once per trading day, after 16:15 New York time |
+| Prices | live, including pre- and post-market | settled daily bars and the official close only |
+| A signal is | a cross between two consecutive live readings | a cross from yesterday's close to today's close |
+| Label | "REAL-TIME, pre-market / market open / after hours" | ✅ CONFIRMED at close · ⚠️ FADED by close · 🔔 CLOSE SIGNAL (not seen intraday) · ⚖️ CONFLICT at close |
+| Orders | says whether a matching close *would* fire your order | the only place an order is sized: "Fires: BUY 12 shares (≈$960), paid from cash" |
+
+The evening check uses exactly the same data and rules as the Claude post-close run (see `SYNC.md`),
+so the two agree. It tells you whether each real-time alert held to the close, and it catches crosses
+the real-time readings missed. On 4 Nov, for example, QQQ crossed during the day and faded, and BOTZ
+crossed only on the close.
+
+**KNIFE-EDGE.** If a signal was decided by less than 0.05 % of the band (price range) or 0.3 points
+(momentum), the message and `status.json` say so: a tiny move would have flipped it.
+
 ## Currencies
 
 USD→SGD, SGD→USD, SGD→KRW and KRW→SGD follow the same two measures and the same no-repeat rule.
@@ -58,7 +76,14 @@ reverses between two readings is not seen.
 |---|---|
 | `TG_TOKEN` | BotFather token |
 | `TG_CHAT` | Telegram chat id |
-| `HOLDINGS_JSON` | the contents of `holdings.example.json`, edited to the real numbers |
+| `HOLDINGS_JSON` | the shape in `holdings.example.json` (zeros only), with your real numbers |
+
+`HOLDINGS_JSON` shape: `as_of` (date the shares were last checked), `cash_usd`, `sgov_floor_pct` (8),
+`min_order_usd` (200), `ai_cap_pct` (30), and per ticker `shares`, `target_pct` (% of total assets),
+`group` (core / ai / diversifier / cash / sgd). The evening check sizes each order from it, and
+computes the AI-group share live, so no number needs updating by hand. If `as_of` is more than 30 days
+old, every Fires line says "holdings stale, update the secret". The older shape (an `order` text per
+ticker) still works until you switch.
 
 **Share counts, targets and order sizes live only in `HOLDINGS_JSON`.** This repository is public, so
 they must never be committed. `config.json` holds only the ticker list and thresholds, and the
@@ -89,7 +114,19 @@ calibrated against 80 sessions of real data for these 16 names, and fire roughly
 single-day moves and **once a week** for three-session slides. Several names sliding together are
 collapsed into one message rather than one alert each.
 
+## The settled block for the post-close run
+
+`docs/status.json` (`"schema": 2`) carries a `settled` block written by the evening check: per ticker
+the close, MA3, bands, RSI, both leg states, the combined signal, the deciding margins and the
+knife-edge flag, plus `intraday_sent`, the real-time alerts sent that day. The post-close run reads it
+and reports any ticker where the two systems disagree. Field names are listed in `SYNC.md` and are
+kept stable.
+
 ## Testing and upkeep
+
+- `python -m pytest -q tests` runs on every PR and before every scheduled run; a failing test stops
+  the run rather than send wrong alerts. Tests use real Yahoo bars saved in `tests/fixtures` (built
+  once by `tools/make_fixtures.py` on GitHub) and never touch the network.
 
 - **Actions → Stock alerts → Run workflow**, `mode: test` sends a test message; `mode: digest`
   sends the watchlist immediately whatever the market is doing.

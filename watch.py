@@ -2,11 +2,18 @@
 # with anomaly detection and a public status feed. Trades nothing.
 import json, os, re, io, sys, time, math, random, uuid, subprocess, urllib.request, urllib.error, datetime as dt
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import signals as SG                                         # noqa: E402  shared with the post-close run
+import orders as OR                                          # noqa: E402
+from signals import ema, atr, rsi, states, edges             # noqa: E402,F401
+
 TOK, CHAT = os.environ.get("TG_TOKEN", ""), os.environ.get("TG_CHAT", "")
-MODE = os.environ.get("MODE", "poll")           # poll | test | digest
-CFG = json.load(open("config.json"))
-STATE, CACHE = "state.json", "bars_cache.json"
-STATUS = "docs/status.json"
+MODE = os.environ.get("MODE", "poll")           # poll | test | digest | buy-watch | settled
+CFG = json.load(open(os.environ.get("CONFIG", os.path.join(HERE, "config.json"))))
+DATA = os.environ.get("DATA_DIR", ".")
+STATE, CACHE = os.path.join(DATA, "state.json"), os.path.join(DATA, "bars_cache.json")
+STATUS = os.path.join(DATA, "docs", "status.json")
 UA = {"User-Agent": "Mozilla/5.0 (compatible; stock-alerts/2)"}
 AN = CFG["anomaly"]
 THIN = set(CFG.get("thin", []))
@@ -81,60 +88,7 @@ def invert_chart(res):
     return r
 
 
-# ---------------------------------------------------------------- indicators
-def ema(c, n=20):
-    k, e = 2 / (n + 1), [c[0]]
-    for x in c[1:]:
-        e.append(x * k + e[-1] * (1 - k))
-    return e
-
-
-def atr(rows, n=14):
-    c = [r[3] for r in rows]
-    tr = [rows[0][1] - rows[0][2]] + [
-        max(rows[i][1] - rows[i][2], abs(rows[i][1] - c[i-1]), abs(rows[i][2] - c[i-1]))
-        for i in range(1, len(rows))]
-    a = [None] * (n - 1) + [sum(tr[:n]) / n]
-    for i in range(n, len(tr)):
-        a.append((a[-1] * (n - 1) + tr[i]) / n)
-    return a
-
-
-def rsi(c, n=14):
-    g = [0.0] + [max(c[i] - c[i-1], 0) for i in range(1, len(c))]
-    l = [0.0] + [max(c[i-1] - c[i], 0) for i in range(1, len(c))]
-    ag, al = sum(g[1:n+1]) / n, sum(l[1:n+1]) / n
-    out = [None] * n + [100 - 100 / (1 + ag / al) if al else 100.0]
-    for i in range(n + 1, len(c)):
-        ag = (ag * (n - 1) + g[i]) / n
-        al = (al * (n - 1) + l[i]) / n
-        out.append(100 - 100 / (1 + ag / al) if al else 100.0)
-    return out
-
-
-def states(prev_c, prev_ma3, prev_up, prev_lo, prev_rsi, c, ma3, up, lo, rs):
-    """The two legs, exactly as the rules define them. prev_* is the last settled bar."""
-    k = "NONE"
-    if prev_ma3 is not None and prev_ma3 <= prev_lo and ma3 > lo:
-        k = "BUY"
-    elif prev_c > prev_up and c <= up:
-        k = "SELL"
-    elif c < lo:
-        k = "WATCH BUY"
-    elif c > up:
-        k = "WATCH SELL"
-    r = "NONE"
-    if prev_rsi < 30 <= rs:
-        r = "BUY"
-    elif prev_rsi > 70 >= rs:
-        r = "SELL"
-    elif rs < 30:
-        r = "WATCH BUY"
-    elif rs > 70:
-        r = "WATCH SELL"
-    return k, r
-
-
+# ---------------------------------------------------------------- indicators (see signals.py)
 def robust_sigma(rets):
     """MAD-scaled sigma. A single crash day barely moves the median, so it stays visible.
     Plain stdev is inflated BY the outlier and hides it (GOOGL, 2026-11-02: z=-0.1 on stdev)."""
@@ -161,40 +115,74 @@ def session_of(meta, now=None):
     return "CLOSED"
 
 
-def settled_rows(t):
-    """Daily OHLC through the last COMPLETED session (today's running bar removed)."""
+def market(t):
+    if is_fx(t):
+        return "fx"
+    if t.endswith(".SI"):
+        return "sg"
+    if t.endswith(".KS"):
+        return "kr"
+    return "us"
+
+
+def daily_bars(t):
+    """Yahoo 1y daily bars as dicts, after the shared hygiene rules (signals.hygiene)."""
     r = chart(t, "1y", "1d")
     q = r["indicators"]["quote"][0]
     meta = r["meta"]
     off = meta.get("gmtoffset", 0)
     day = lambda ts: dt.datetime.fromtimestamp(ts + off, dt.timezone.utc).date()
-    rows, dates = [], []
-    for ts, o, h, l, c in zip(r["timestamp"], q["open"], q["high"], q["low"], q["close"]):
-        if None in (o, h, l, c):
-            continue
-        rows.append((o, h, l, c))
-        dates.append(day(ts))
-    if not rows:
+    vol = q.get("volume") or [None] * len(r["timestamp"])
+    bars = [{"date": day(ts), "o": o, "h": h, "l": l, "c": c, "v": v}
+            for ts, o, h, l, c, v in zip(r["timestamp"], q["open"], q["high"], q["low"], q["close"], vol)]
+    fx = is_fx(t)
+    kept, dropped = SG.hygiene(bars, volume_rule=not fx,
+                               flat_rule=t not in CFG.get("keep_flat_bars", []),
+                               partial_tape=not fx)
+    for d, why_ in dropped[-3:]:
+        print(f"  {t}: dropped {d} ({why_})", file=sys.stderr)
+    return kept, meta, day
+
+
+def settled_rows(t, settled=False):
+    """Daily OHLC through the last COMPLETED session.
+    settled=False (real-time polls): the live price stands in for the current session's bar.
+    settled=True  (evening check): today's bar is the official close, never an after-hours price."""
+    bars, meta, day = daily_bars(t)
+    if not bars:
         return None
+    off = meta.get("gmtoffset", 0)
     sess = session_of(meta)
     today_x = dt.datetime.fromtimestamp(time.time() + off, dt.timezone.utc).date()
     mt = meta.get("regularMarketTime")
     last_session = day(mt) if mt is not None else None
-    # The live price always stands in for the CURRENT session's bar, so that bar is removed here:
-    #  - market open (pre, regular, after hours): today's bar, which is still forming;
-    #  - market shut: the most recent session's bar, because the live price IS that session.
-    # Keeping it while shut would count the same close twice and shift every reading.
-    if sess in ("PRE", "REGULAR", "POST"):
-        if dates[-1] == today_x:
-            rows, dates = rows[:-1], dates[:-1]
+    if market(t) in ("sg", "kr"):
+        # Asian listings: a bar dated today Singapore time is not settled when the US closes.
+        sgt = (dt.datetime.fromtimestamp(time.time(), dt.timezone.utc) + dt.timedelta(hours=8)).date()
+        bars = [b for b in bars if b["date"] < sgt]
+    if settled and market(t) == "us":
+        if bars and last_session == bars[-1]["date"] and sess not in ("PRE", "REGULAR"):
+            if meta.get("regularMarketPrice"):
+                bars[-1] = dict(bars[-1], c=meta["regularMarketPrice"])   # the official close
+        while bars and last_session is not None and bars[-1]["date"] > last_session:
+            bars = bars[:-1]                                              # early row, not traded yet
+    elif sess in ("PRE", "REGULAR", "POST"):
+        # The live price always stands in for the CURRENT session's bar, so that bar is removed.
+        if bars and bars[-1]["date"] == today_x:
+            bars = bars[:-1]
+    elif last_session is not None and not settled:
+        # Market shut: the live price IS the latest session, so its bar (and any early row
+        # Yahoo adds for a day that has not traded yet) is removed rather than counted twice.
+        while bars and bars[-1]["date"] >= last_session:
+            bars = bars[:-1]
     elif last_session is not None:
-        # Also drop any early row Yahoo adds for a day that has not traded yet.
-        while dates and dates[-1] >= last_session:
-            rows, dates = rows[:-1], dates[:-1]
-    if len(rows) < 40:
+        while bars and bars[-1]["date"] > last_session:
+            bars = bars[:-1]
+    if len(bars) < 40:
         return None
-    return {"rows": rows[-220:], "dates": [x.isoformat() for x in dates[-220:]],
-            "last": dates[-1].isoformat()}
+    bars = bars[-SG.WINDOW:]
+    return {"rows": [(b["o"], b["h"], b["l"], b["c"]) for b in bars],
+            "dates": [b["date"].isoformat() for b in bars], "last": bars[-1]["date"].isoformat()}
 
 
 def derive(rows, dates=None):
@@ -371,13 +359,23 @@ def num(t, x):
     return f"{x:,.2f}" if ax >= 100 else (f"{x:,.4f}" if ax >= 1 else f"{x:.6f}")
 
 
+CCY_SIGN = {"USD": "$", "SGD": "S$", "KRW": "₩"}
+
+
+def ccy(t):
+    return CFG.get("currency", {}).get(t, "USD")
+
+
 def money(t, x):
-    return f"{num(t, x)} {FX[t]['quote']}" if is_fx(t) else "$" + f"{x:,.2f}"
+    if is_fx(t):
+        return f"{num(t, x)} {FX[t]['quote']}"
+    c = ccy(t)
+    return CCY_SIGN.get(c, c + " ") + (f"{x:,.0f}" if c == "KRW" else f"{x:,.2f}")
 
 
 def rate(t, x):
     """The headline price: '1 USD = 1.3012 SGD' for a currency, '$183.00' for a stock."""
-    return f"1 {FX[t]['base']} = {num(t, x)} {FX[t]['quote']}" if is_fx(t) else "$" + f"{x:,.2f}"
+    return f"1 {FX[t]['base']} = {num(t, x)} {FX[t]['quote']}" if is_fx(t) else money(t, x)
 
 
 def sess_text(t, sess):
@@ -402,8 +400,8 @@ def fx_open(now=None):
 
 def sig6(x):
     return float(f"{x:.6g}") if x is not None else None
-SESSION_PLAIN = {"PRE": "pre-market, before the US open", "REGULAR": "market open",
-                 "POST": "after hours, after the US close", "CLOSED": "market closed"}
+SESSION_PLAIN = {"PRE": "pre-market", "REGULAR": "market open",
+                 "POST": "after hours", "CLOSED": "market closed"}
 
 
 def full_name(t, o=None):
@@ -446,14 +444,22 @@ def fx_do(t, side):
     return f"👉 <b>Change your {CURRENCY.get(frm, frm)} into {CURRENCY.get(to, to)}</b> ({frm} → {to})"
 
 
+CTX = {"closes": {}, "usdsgd": None, "paused": {}, "today": None}
+
+
 def plan_text(t, side):
-    """What your holdings plan says this signal means, in plain words."""
+    """What your holdings plan says this signal means, in plain words. REAL-TIME alerts only
+    say whether a matching close would fire; only the evening check sizes an order."""
     if is_fx(t):
         frm, to = fx_action(t, side)
         return (f"<b>Change {frm} into {to}.</b> Right now your {CURRENCY.get(frm, frm)} buy more "
                 f"{CURRENCY.get(to, to)} than they usually do.")
     if H is None:
         return "Your holdings aren't loaded, so I can't say whether this triggers an order."
+    if OR.shape(H) == "v2":
+        txt = OR.gate_text(H, t, side, CTX["closes"], CTX["usdsgd"], set(CFG["ai_group"]),
+                           CTX["today"] or dt.date.today(), CTX["paused"].get(t), CFG.get("never_arm", []))
+        return txt[0].upper() + txt[1:] + "."
     cf = H["tickers"].get(t)
     if not cf or cf.get("target", 0) == 0:
         return "You don't hold this and it isn't in your plan. For information only."
@@ -525,10 +531,13 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     icons = "".join(dot if l in said else "⚪" for l in ("k", "r"))
     lines = [f"{icons} <b>{verdict} — {label(t)}</b>",
              esc(full_name(t, o)),
-             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}",
+             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · REAL-TIME, {sess_text(t, sess)}",
              ""]
     if is_fx(t):
         lines += [fx_do(t, side), ""]
+    e = o.get("edge") or {}
+    if any(e.get(f"knife_{l}") for l in legs):
+        lines += [knife_line(e, legs), ""]
     lines += [
              f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>{verdict}</b>",
              ""]
@@ -554,6 +563,15 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     png = price_chart(t, full_name(t, o), o["d"], ev, head,
                       "#2e7d32" if side == "BUY" else "#c62828", note)
     return "\n".join(lines).replace("\n\n\n", "\n\n"), png
+
+
+def knife_line(e, legs):
+    bits = []
+    if "k" in legs and e.get("knife_k"):
+        bits.append(f"price range decided by {min(abs(e['margin_k_pct']), abs(e.get('prior_k_pct', 9e9))):.3f}%")
+    if "r" in legs and e.get("knife_r"):
+        bits.append(f"momentum decided by {e['margin_r_pts']:.2f} points")
+    return f"⚠️ <b>KNIFE-EDGE</b>: {', '.join(bits)}. A tiny move would flip it."
 
 
 def mixed_message(o, sess):
@@ -677,7 +695,7 @@ def anomalies(rows, bench):
                                      f"while the S&amp;P 500 ({bn}) moved <b>{bv:+.1f}%</b>, a gap of "
                                      f"{abs(g5-bv):.1f} points.\n\nMoney appears to be moving "
                                      f"{'into' if g5 > bv else 'out of'} AI-related names.")})
-    moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows if not is_fx(o["t"])]
+    moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows if o["t"] in CFG["tickers"]]
     if moves:
         dn = sum(1 for m in moves if m <= -AN["breadth_move_pct"])
         if dn / len(moves) >= AN["breadth_frac"]:
@@ -883,7 +901,7 @@ def group_chart(rows, title, period):
         return None
     try:
         vals = []
-        for o in [x for x in rows if not is_fx(x["t"])]:
+        for o in [x for x in rows if x["t"] in CFG["tickers"]]:
             c = o["d"].get("closes60") or []
             base = o["d"]["c"][-1] if period == 1 else (c[-5] if len(c) >= 5 else None)
             if base:
@@ -979,10 +997,30 @@ def digest(rows, sess, alerts):
 
 
 # ---------------------------------------------------------------- status feed
-def write_status(rows, sess, alerts, errs):
-    os.makedirs("docs", exist_ok=True)
-    # Public file: signal states and prices only. No share counts, targets or order sizes.
+def read_status():
+    try:
+        return json.load(open(STATUS))
+    except Exception:
+        return {}
+
+
+def intraday_keys(state, day=None):
+    """Real-time signal keys sent on a given exchange day ('T:SIDE:leg'; older 'T:SIDE')."""
+    if day is None or state.get("day") == day:
+        sent = state.get("sent", [])
+    elif (state.get("last_day") or {}).get("day") == day:
+        sent = state["last_day"].get("sent", [])
+    else:
+        sent = []
+    return [k for k in sent if not k.startswith("anom:") and ":MIXED" not in k]
+
+
+def write_status(rows, sess, alerts, errs, state=None):
+    os.makedirs(os.path.dirname(STATUS), exist_ok=True)
+    # Public file: signal states and prices only. No share counts, cash, targets or order sizes.
+    prev = read_status()
     out = {
+        "schema": 2,
         "generated_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "session": sess,
         "settled_close_date": None,
@@ -1010,7 +1048,14 @@ def write_status(rows, sess, alerts, errs):
             "nearest_trigger_pct": o.get("near"),
             "sigma_pct": round(d["sigma"] * 100, 3) if d.get("sigma") else None,
             "z": round(o["z"], 2) if o.get("z") is not None else None,
+            "margin_k_pct": (o.get("edge") or {}).get("margin_k_pct"),
+            "margin_r_pts": (o.get("edge") or {}).get("margin_r_pts"),
+            "knife_edge": (o.get("edge") or {}).get("knife_edge"),
         }
+    # The settled block is written only by the evening check; real-time runs carry it forward.
+    if "settled" in prev:
+        out["settled"] = prev["settled"]
+    out["intraday_sent"] = intraday_keys(state or {})
     json.dump(out, open(STATUS, "w"), indent=1)
 
 
@@ -1029,27 +1074,44 @@ def poll(state):
     if state.get("day") != today:
         # New exchange day: alerts may repeat, but the last real-time reading carries over,
         # so an after-hours cross is not reported again at the next pre-market.
-        keep = state.get("obs")
-        state_fxv = state.get("fx_version")
+        # The evening check may run after midnight, so yesterday's alert list is kept for it.
+        last = {"day": state.get("day"), "sent": state.get("sent", [])}
+        keep = {k: state.get(k) for k in ("obs", "fx_version", "settled_done", "paused")}
         state.clear()
-        state.update({"day": today, "sent": [], "pending": {}, "obs": keep or {},
-                      "fx_version": state_fxv})
+        state.update({"day": today, "sent": [], "pending": {}, "last_day": last})
+        state.update({k: v for k, v in keep.items() if v is not None})
     state.setdefault("obs", {})
     if state.get("fx_version") != 2:
         for t in FX:
             state["obs"].pop(t, None)
         state["fx_version"] = 2
     want_list = MODE in ("digest", "buy-watch")   # only when you ask for it
-    # Stocks follow the US session; currencies trade almost around the clock on weekdays.
-    stocks = tickers if (sess != "CLOSED" or want_list) else []
+    # Stocks follow the US session; currencies trade almost around the clock on weekdays;
+    # optional SGX / KRX listings follow their own exchange's session.
+    us_all = [t for t in universe() if market(t) == "us"]
+    stocks = us_all if (sess != "CLOSED" or want_list) else []
     fxs = list(FX) if (fx_open() or want_list) else []
-    if not stocks and not fxs:
+    own, own_live = [], {}
+    for t in [t for t in universe() if market(t) in ("sg", "kr")]:
+        try:
+            lv = live(t)
+            if lv["sess"] != "CLOSED" or want_list:
+                own.append(t)
+                own_live[t] = lv
+        except Exception as e:
+            print(f"{t}: {e}", file=sys.stderr)
+    if not stocks and not fxs and not own:
         print("stock and currency markets both shut, nothing to do (1 call)")
         return None, sess, []
 
     rows, errs = [], []
     if stocks:
-        cache, fresh, cerrs = build_cache(stocks, f"{today}:{'shut' if sess == 'CLOSED' else 'open'}")
+        # Holdings that are not watched (SGOV, ES3) are priced too, for the AI-group weight.
+        cache, fresh, cerrs = build_cache(stocks + valuation_only(),
+                                          f"{today}:{'shut' if sess == 'CLOSED' else 'open'}")
+        errs += cerrs
+    for t in own:
+        cache, fresh, cerrs = build_cache([t], f"{own_live[t]['edate']}:{own_live[t]['sess'] == 'CLOSED'}")
         errs += cerrs
     if fxs:
         # Currency days roll over at midnight UTC, not New York, so they get their own refresh key.
@@ -1060,14 +1122,15 @@ def poll(state):
         cache = json.load(open(CACHE))
     except Exception:
         cache = {}
-    for t in stocks + fxs:
+    set_context(cache, state)
+    for t in stocks + fxs + own:
         d = cache.get(t)
         if not isinstance(d, dict) or "ema" not in d:
             errs.append(f"{t}: no cached bars")
             continue
         try:
-            lv = probe if t == bench else live(t)
-            tsess = lv["sess"] if is_fx(t) else sess
+            lv = probe if t == bench else (own_live.get(t) or live(t))
+            tsess = lv["sess"] if market(t) != "us" else sess
             px = lv["px"]
             if px is None:
                 errs.append(f"{t}: no price")
@@ -1083,6 +1146,9 @@ def poll(state):
             ev["t"] = t
             if ref is None:   # the comparison point, in the same shape, for the explanations
                 ref = {"px": pc, "ma3": d["ma3"], "up": d["up"], "lo": d["lo"], "rsi": d["rsi"]}
+            pv = {"c": ref["px"], "ma3": ref["ma3"], "up": ref["up"], "lo": ref["lo"], "rsi": ref["rsi"]}
+            cv = {"c": ev["px"], "ma3": ev["ma3"], "up": ev["up"], "lo": ev["lo"], "rsi": ev["rsi"]}
+            edge = edges(pv, cv)
             nxt = obs(ev) if REALTIME else None
             tb, ts = trigger(d, "BUY", nxt), trigger(d, "SELL", nxt)
             near = None
@@ -1092,15 +1158,44 @@ def poll(state):
                     if near is None or abs(p) < abs(near):
                         near = round(p, 1)
             rows.append({"t": t, "d": d, "ev": ev, "ref": ref, "px": px, "name": lv.get("name"), "sess": tsess,
-                         "tb": tb, "ts": ts, "near": near})
+                         "tb": tb, "ts": ts, "near": near, "edge": edge})
         except Exception as e:
             errs.append(f"{t}: {e}")
     if not rows:
         return None, sess, errs
     b = next((o for o in rows if o["t"] == bench), None)
     alerts = anomalies(rows, b if stocks else None)
-    write_status(rows, sess, alerts, errs)
+    write_status(rows, sess, alerts, errs, state)
     return (rows, sess, alerts, errs, want_list), sess, errs
+
+
+def universe():
+    """Watched tickers: config 'tickers', plus the information-only list when switched on."""
+    u = list(CFG["tickers"])
+    if CFG.get("include_info_tickers"):
+        u += [t for t in CFG.get("info_tickers", []) if t not in u]
+    return u
+
+
+def valuation_only():
+    """Held tickers that are not watched (e.g. SGOV, ES3.SI): priced for the book, never alerted."""
+    if not H:
+        return []
+    return [t for t in H.get("tickers", {}) if t not in universe() and not is_fx(t)
+            and (H["tickers"][t].get("shares") or 0)]
+
+
+def set_context(cache, state):
+    """Prices for the order gate. Only public prices go in here; holdings stay in memory."""
+    CTX["closes"] = {t: v["c"][-1] for t, v in cache.items() if isinstance(v, dict) and v.get("c")}
+    u = cache.get("USDSGD=X")
+    CTX["usdsgd"] = u["c"][-1] if isinstance(u, dict) and u.get("c") else CTX.get("usdsgd")
+    CTX["paused"] = dict(state.get("paused") or {})
+    try:
+        from zoneinfo import ZoneInfo
+        CTX["today"] = dt.datetime.now(ZoneInfo("America/New_York")).date()
+    except Exception:
+        CTX["today"] = dt.date.today()
 
 
 def still_crossed(o, side, leg):
@@ -1178,7 +1273,194 @@ def decide(rows, alerts, state, sess):
     return out
 
 
+
+# ---------------------------------------------------------------- evening check (settled pass)
+SETTLED_FROM = (16, 15)        # New York time; the official close is normally in by then
+
+
+def et_now():
+    try:
+        from zoneinfo import ZoneInfo
+        return dt.datetime.fromtimestamp(time.time(), ZoneInfo("America/New_York"))
+    except Exception:
+        return dt.datetime.fromtimestamp(time.time() - 5 * 3600, dt.timezone.utc)
+
+
+def _as_ev(t, st):
+    return {"t": t, "px": st["close"], "ma3": st["ma3"], "up": st["upper"], "lo": st["lower"],
+            "rsi": st["rsi"], "k": st["k_state"], "r": st["r_state"]}
+
+
+def _as_ref(st):
+    p = st["prev"]
+    return {"px": p["close"], "ma3": p["ma3"], "up": p["upper"], "lo": p["lower"], "rsi": p["rsi"]}
+
+
+def margin_text(leg, side, st, t):
+    """The deciding margin at the close, in words. Positive = the rule was met by that much."""
+    if leg == "k" and side == "BUY":
+        m = (st["ma3"] - st["lower"]) / st["lower"] * 100
+        return (f"3-day average {money(t, st['ma3'])} vs bottom of range {money(t, st['lower'])}: "
+                f"{'above' if m > 0 else 'below'} by {abs(m):.4f}%")
+    if leg == "k" and side == "SELL":
+        m = (st["upper"] - st["close"]) / st["upper"] * 100
+        return (f"close {money(t, st['close'])} vs top of range {money(t, st['upper'])}: "
+                f"{'inside' if m >= 0 else 'still above'} by {abs(m):.4f}%")
+    if side == "BUY":
+        return f"momentum score {st['rsi']:.2f}: {'over' if st['rsi'] >= 30 else 'under'} 30 by {abs(st['rsi']-30):.2f} points"
+    return f"momentum score {st['rsi']:.2f}: {'under' if st['rsi'] <= 70 else 'over'} 70 by {abs(st['rsi']-70):.2f} points"
+
+
+def fires_settled(t, side, closes, usdsgd, state, day):
+    """The only place an order is sized. Telegram only, never written to a file."""
+    if H is None:
+        return "holdings not loaded, so I can't size this", False
+    if OR.shape(H) == "v2":
+        return OR.fires_line(H, t, side, closes, usdsgd, set(CFG["ai_group"]),
+                             dt.date.fromisoformat(day), (state.get("paused") or {}).get(t),
+                             CFG.get("never_arm", []))
+    return re.sub(r"<[^>]+>", "", plan_text(t, side)), "trigger your prepared order" in plan_text(t, side)
+
+
+def settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day):
+    ev, ref = _as_ev(t, st), _as_ref(st)
+    head = {"CONFIRMED": f"✅ <b>CONFIRMED at close — {label(t)}</b>",
+            "FADED": f"⚠️ <b>FADED by close — {label(t)}</b>",
+            "CLOSE": f"🔔 <b>CLOSE SIGNAL (not seen intraday) — {label(t)}</b>",
+            "CONFLICT": f"⚖️ <b>CONFLICT at close — {label(t)}</b>"}[kind]
+    verdict = st["signal"] if kind in ("CONFIRMED", "CLOSE") else side
+    combo = lambda l: (st[f"{l}_state"] if st[f"{l}_state"] in ("BUY", "SELL") else "—")
+    lines = [head, esc(full_name(t)),
+             f"<b>Official close {money(t, st['close'])}</b> · {st['bar_date']} · evening check", ""]
+    if kind == "CONFLICT":
+        lines += [f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>the two measures disagree</b>", "",
+                  why("k", st["k_state"], ref, ev), "", why("r", st["r_state"], ref, ev), "",
+                  "<b>Fires:</b> nothing. A conflict fires nothing."]
+    elif kind == "FADED":
+        lines += [f"Today's real-time <b>{side}</b> did not hold to the close.", ""]
+        for l in sorted(iv):
+            lines.append(f"{LEG[l]}: {margin_text(l, side, st, t)}, so no {side} at the close.")
+        lines += ["", "<b>Fires:</b> nothing. Only a signal at the close fires an order."]
+    else:
+        lines += [f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>{verdict}</b>", ""]
+        lines.append("Today's real-time alert held to the close." if kind == "CONFIRMED"
+                     else "No real-time reading caught this; it appears on the official close.")
+        lines.append("")
+        for l in sorted(sv):
+            lines += [why(l, side, ref, ev), f"<i>Deciding margin: {margin_text(l, side, st, t)}.</i>", ""]
+        if "STRONG" in verdict and len(sv) < 2:
+            lines += ["The other measure gave the same signal within the last 3 sessions, so this counts as STRONG.", ""]
+        line, fires = fires_settled(t, side, closes, usdsgd, state, st["bar_date"])
+        if side == "SELL" and "under target" in line:
+            state.setdefault("paused", {})[t] = st["bar_date"]
+        lines.append(f"<b>Fires:</b> {esc(line)}")
+    e = {"margin_k_pct": st["margin_k_pct"], "margin_r_pts": st["margin_r_pts"],
+         "prior_k_pct": st["prior_k_pct"], "knife_k": st["knife_k"], "knife_r": st["knife_r"]}
+    legs = (iv | sv) or {"k", "r"}
+    if any(e.get(f"knife_{l}") for l in legs):
+        lines += ["", knife_line(e, legs)]
+    lines += ["", "<i>Nothing has been traded.</i>"]
+    color = {"CONFIRMED": "#2e7d32" if side == "BUY" else "#c62828", "FADED": "#757575",
+             "CLOSE": "#1565c0", "CONFLICT": "#ef6c00"}[kind]
+    png = None
+    try:
+        d = derive(r["rows"][:-1], r["dates"][:-1])
+        note = {"CONFIRMED": "held to the close", "FADED": "faded by the close",
+                "CLOSE": "seen only at the close", "CONFLICT": "measures disagree"}[kind]
+        png = price_chart(t, full_name(t), d, ev, f"{kind.title()}: {verdict}", color, note)
+    except Exception as ex:
+        print(f"settled chart {t}: {ex}", file=sys.stderr)
+    return "\n".join(lines).replace("\n\n\n", "\n\n"), png
+
+
+def settled_pass(state, manual=False):
+    """Once per trading day after the official close: close-to-close states from settled bars
+    only (no live or extended-hours price), compared with today's real-time alerts."""
+    now = et_now()
+    day = now.date().isoformat()
+    done = state.setdefault("settled_done", [])
+    if day in done:
+        return []
+    if not manual and ((now.hour, now.minute) < SETTLED_FROM or now.weekday() >= 5):
+        return []
+    sr = settled_rows(CFG["benchmark"], settled=True)
+    if not sr or sr["last"] != day:
+        print(f"evening check: the {day} close is not in yet (latest settled {sr and sr['last']})")
+        return []
+    res, notes = {}, []
+    for t in universe() + list(FX) + valuation_only():
+        try:
+            r = sr if t == CFG["benchmark"] else settled_rows(t, settled=True)
+            if not r:
+                notes.append(f"{t}: too few settled bars")
+                continue
+            res[t] = (SG.settled_state(r["rows"], r["dates"]), r)
+        except Exception as e:
+            notes.append(f"{t}: {e}")
+    closes = {t: v[0]["close"] for t, v in res.items()}
+    usdsgd = closes.get("USDSGD=X")
+    seen = {}
+    for k in intraday_keys(state, day):
+        p = k.split(":")
+        if len(p) >= 2:
+            seen.setdefault((p[0], p[1]), set()).update({p[2]} if len(p) == 3 else {"k", "r"})
+    out = []
+    paused = state.setdefault("paused", {})
+    for t in [t for t in universe() if market(t) == "us"]:
+        if t not in res:
+            continue
+        st, r = res[t]
+        if st["bar_date"] != day:
+            notes.append(f"{t}: no settled bar for {day} (latest {st['bar_date']})")
+            continue
+        if st["k_state"] == "NONE" and st["r_state"] == "NONE":
+            paused.pop(t, None)                 # adds resume once the state is back to NONE
+        if st["signal"] == "CONFLICT":
+            out.append(settled_message("CONFLICT", t, "", st, r, set(), set(), closes, usdsgd, state, day))
+            continue
+        for side in ("BUY", "SELL"):
+            iv = seen.get((t, side), set())
+            sv = {l for l in ("k", "r") if st[f"{l}_state"] == side}
+            kind = ("CONFIRMED" if iv and sv else "FADED" if iv else "CLOSE" if sv else None)
+            if kind:
+                out.append(settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day))
+    write_settled(res, day, state, notes)
+    done.append(day)
+    state["settled_done"] = done[-10:]
+    print(f"evening check {day}: {len(res)} settled, {len(out)} message(s), {len(notes)} note(s)")
+    for n in notes[:10]:
+        print("  " + n, file=sys.stderr)
+    return out
+
+
+def write_settled(res, day, state, notes):
+    """The block the post-close run reads. Prices and states only; no holdings data."""
+    os.makedirs(os.path.dirname(STATUS), exist_ok=True)
+    out = read_status()
+    out["schema"] = 2
+    hide = set(valuation_only())
+    out["settled"] = {"date": day, "generated_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                      "notes": notes, "tickers": {}}
+    for t, (st, _r) in res.items():
+        if t in hide:
+            continue
+        out["settled"]["tickers"][t] = {
+            "label": label(t), "kind": "currency" if is_fx(t) else "stock", "bar_date": st["bar_date"],
+            "close": sig6(st["close"]), "ma3": sig6(st["ma3"]), "upper": sig6(st["upper"]),
+            "lower": sig6(st["lower"]), "rsi": round(st["rsi"], 3),
+            "k_state": st["k_state"], "r_state": st["r_state"], "signal": st["signal"],
+            "margin_k_pct": st["margin_k_pct"], "margin_r_pts": st["margin_r_pts"],
+            "knife_edge": st["knife_edge"]}
+    out["intraday_sent"] = intraday_keys(state, day)
+    json.dump(out, open(STATUS, "w"), indent=1)
+
+
 def main():
+    if MODE == "announce":                  # a one-off message, e.g. "the algorithm was updated"
+        note = os.environ.get("NOTE", "").strip()
+        if note:
+            send(note)
+        return
     if MODE == "test":
         try:
             lv = live(CFG["benchmark"])
@@ -1208,9 +1490,14 @@ def main():
     state.setdefault("pending", {})
     state.setdefault("obs", {})
 
+    if MODE == "settled":                   # the 16:20 / 16:50 New York runs, or a manual run
+        evening(state, manual=os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch")
+        return
+
     res, sess, errs = poll(state)
     if res is None:
         json.dump(state, open(STATE, "w"))
+        evening(state)
         if errs and len(errs) >= len(CFG["tickers"]):
             sys.exit("every ticker failed: " + "; ".join(errs[:4]))
         return
@@ -1232,8 +1519,24 @@ def main():
     print(f"session {sess} · {len(rows)} priced · {len(outbox)} message(s) · {len(errs)} error(s)")
     for e in errs[:10]:
         print("  " + e, file=sys.stderr)
+    if MODE == "poll":
+        evening(state)
     if len(errs) >= len(CFG["tickers"]):
         sys.exit("every ticker failed")
+
+
+def evening(state, manual=False):
+    """Try the evening check. Any run after 16:15 New York time attempts it until it succeeds,
+    so a late or skipped GitHub schedule cannot lose the day."""
+    try:
+        msgs = settled_pass(state, manual=manual)
+    except Exception as e:
+        print(f"evening check failed: {e}", file=sys.stderr)
+        return
+    json.dump(state, open(STATE, "w"))      # record 'done' before sending, so nothing repeats
+    for text, png in msgs:
+        notify(text, png)
+        time.sleep(0.7)
 
 
 if __name__ == "__main__":
