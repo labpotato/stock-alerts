@@ -169,6 +169,13 @@ def daily_bars(t, ref_px=None):
             for ts, o, h, l, c, v in zip(r["timestamp"], q["open"], q["high"], q["low"], q["close"], vol)]
     fx = is_fx(t)
     splits = [] if fx else split_events(r, day)
+    # Splits confirmed from the issuer while Yahoo lags (config "splits": {T: [[date, k], ...]}).
+    have = {sd for sd, _ in splits}
+    for sd, k in (CFG.get("splits") or {}).get(t, []):
+        sd = dt.date.fromisoformat(sd)
+        if sd not in have:
+            splits.append((sd, float(k)))
+    splits.sort()
     if splits:
         # With no live price passed in, Yahoo's latest price stands in (the official close, in the evening).
         bars, applied = SG.adjust_splits(bars, splits, ref_px or meta.get("regularMarketPrice"))
@@ -1243,7 +1250,9 @@ def poll(state):
                 continue
             pc = d["c"][-1]
             # A jump that matches a split ratio: the cached bars may predate a split.
-            if not is_fx(t) and SG.split_like(pc, px):
+            listed = [sd for sd, _ in (CFG.get("splits") or {}).get(t, [])
+                      if sd > str(d.get("last") or "") and sd <= today]
+            if not is_fx(t) and (SG.split_like(pc, px) or (listed and abs(px / pc - 1) > SG.SPLIT_MOVE)):
                 d = split_check(t, d, px, state, today)
                 if d is None:
                     errs.append(f"{t}: held, {pc:.4g} -> {px:.4g} looks like a split Yahoo has not confirmed")
