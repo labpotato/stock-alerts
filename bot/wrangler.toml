@@ -1,0 +1,11 @@
+# Cloudflare Worker for the Telegram Q&A bot. Deployed by .github/workflows/bot-deploy.yml.
+# Secrets (ANTHROPIC_API_KEY, TG_TOKEN, TG_CHAT, HOLDINGS_JSON, TG_WEBHOOK_SECRET) are set by that
+# workflow from the GitHub repository secrets; none are written here, since this repo is public.
+name = "stock-alerts-bot"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+STATUS_URL = "https://raw.githubusercontent.com/labpotato/stock-alerts/main/docs/status.json"

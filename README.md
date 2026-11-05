@@ -122,6 +122,20 @@ knife-edge flag, plus `intraday_sent`, the real-time alerts sent that day. The p
 and reports any ticker where the two systems disagree. Field names are listed in `SYNC.md` and are
 kept stable.
 
+## Ask Claude in Telegram
+
+Message the bot a question ("why did XLV get a SELL?", "news on GOOGL?", "how close is GLDM to a buy?")
+and Claude (Opus 5.5) answers in the same chat, using the alerter's live `status.json`, your holdings
+secret and, when it helps, a web search. Reply to an alert to ask about that alert. It answers only
+your chat, can't trade or change anything, and costs a few US cents per question on your Anthropic
+API account (billed separately from a Claude subscription).
+
+It runs as a Cloudflare Worker (`bot/`), deployed by `.github/workflows/bot-deploy.yml`, which copies
+the bot's secrets from this repository's secrets. Needed: `CLOUDFLARE_API_TOKEN`,
+`CLOUDFLARE_ACCOUNT_ID`, `ANTHROPIC_API_KEY` (plus the existing `TG_TOKEN`, `TG_CHAT`,
+`HOLDINGS_JSON`). After changing any of them, re-run that workflow. The free Cloudflare plan allows
+about 25 seconds per answer; a question that needs longer says so instead of going silent.
+
 ## Testing and upkeep
 
 - `python -m pytest -q tests` runs on every PR and before every scheduled run; a failing test stops
