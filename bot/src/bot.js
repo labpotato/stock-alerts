@@ -211,3 +211,32 @@ export async function answer(env, msg, deps) {
   for (const part of splitMessage(text)) await send(part);
   return sent;
 }
+
+
+// ---------------------------------------------------------------- alerter heartbeat
+// GitHub's own schedule is best-effort and dropped most runs (7 in 2 days instead of ~300),
+// so this Worker's cron starts the alerter every 10 minutes through workflow_dispatch instead.
+export async function dispatchAlerter(env, doFetch) {
+  if (!env.GH_DISPATCH_TOKEN) {
+    console.log("heartbeat skipped: GH_DISPATCH_TOKEN not set");
+    return { ok: false, reason: "no token" };
+  }
+  const repo = env.GH_REPO || "labpotato/stock-alerts";
+  const res = await doFetch(`https://api.github.com/repos/${repo}/actions/workflows/alert.yml/dispatches`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
+      accept: "application/vnd.github+json",
+      "x-github-api-version": "2022-11-28",
+      "user-agent": "stock-alerts-heartbeat",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ ref: "main", inputs: { mode: "poll" } }),
+  });
+  if (res.status !== 204) {
+    const text = await res.text().catch(() => "");
+    console.log("heartbeat failed:", res.status, text.slice(0, 200));
+    return { ok: false, status: res.status };
+  }
+  return { ok: true };
+}

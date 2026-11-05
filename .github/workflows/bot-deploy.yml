@@ -81,6 +81,7 @@ jobs:
         env:
           URL: ${{ steps.deploy.outputs.url }}
           HOLDINGS_JSON: ${{ secrets.HOLDINGS_JSON }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
         run: |
           WH=$(openssl rand -hex 24); echo "::add-mask::$WH"
           printf %s "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY >/dev/null
@@ -88,6 +89,12 @@ jobs:
           printf %s "$TG_CHAT"           | npx wrangler secret put TG_CHAT >/dev/null
           printf %s "$WH"                | npx wrangler secret put TG_WEBHOOK_SECRET >/dev/null
           if [ -n "$HOLDINGS_JSON" ]; then printf %s "$HOLDINGS_JSON" | npx wrangler secret put HOLDINGS_JSON >/dev/null; fi
+          if [ -n "$GH_DISPATCH_TOKEN" ]; then
+            tok=$(printf %s "$GH_DISPATCH_TOKEN" | tr -d '[:space:]'); echo "::add-mask::$tok"
+            printf %s "$tok" | npx wrangler secret put GH_DISPATCH_TOKEN >/dev/null
+          else
+            echo "::warning::GH_DISPATCH_TOKEN is not set, so the 10-minute heartbeat stays off and the alerter relies on GitHub's own (unreliable) schedule."
+          fi
           curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/setWebhook" \
             --data-urlencode "url=${URL}" --data-urlencode "secret_token=${WH}" \
             --data-urlencode 'allowed_updates=["message"]' -d drop_pending_updates=true \

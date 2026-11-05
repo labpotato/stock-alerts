@@ -56,6 +56,18 @@ time. They can occasionally differ at the margin, because the averages of a rate
 are not exact mirrors. Unusual-move alerts for currencies use a 1% floor instead of 4%, because
 currencies move far less than stocks.
 
+## Staying on around the clock
+
+GitHub's own schedule is best-effort and in practice dropped most runs (7 in two days instead of
+about 300). So the bot's Cloudflare Worker has a timer that starts the alerter every 10 minutes
+through GitHub's on-demand trigger, which is reliable. It needs one more repository secret,
+`GH_DISPATCH_TOKEN`: a fine-grained GitHub token for this repository only, with "Actions: Read and
+write". The GitHub schedule stays as a fallback; extra runs are harmless because alerts never repeat.
+
+US stocks are checked in their sessions (pre-market and after hours included), the Korean listings
+(Samsung Electronics, SK hynix) in KRX hours, and the currency pairs whenever currency markets are
+open. The Korean listings are information only: they alert, but never arm an order.
+
 ## Coverage
 
 Runs every 10 minutes, around the clock. The job asks Yahoo which session is live and exits after a
