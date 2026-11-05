@@ -190,7 +190,7 @@ def settled_state(rows, dates):
 
 # ---------------------------------------------------------------- stock splits and reverse splits
 SPLIT_MOVE = 0.33   # only a jump of at least a third is checked against split ratios
-SPLIT_TOL = 0.04    # a price ratio within 4 % of a split ratio "looks like" that split
+SPLIT_TOL = 0.07    # within 7 % of a split ratio "looks like" that split (a split day can move too)
 _SPLITS = sorted({float(k) for k in (3/2, 2, 5/2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 25, 30, 40, 50, 100)})
 SPLIT_RATIOS = sorted(set(_SPLITS) | {1 / k for k in _SPLITS})
 

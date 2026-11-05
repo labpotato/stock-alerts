@@ -95,7 +95,8 @@ def test_adjust_splits_rules():
 def test_split_like_only_matches_big_jumps_near_split_ratios():
     assert SG.split_like(450.41, 146.78) == 3.0
     assert SG.split_like(10.0, 100.4) == 0.1
-    assert SG.split_like(100, 48) is None       # -52 %: not within 4 % of a 2-for-1
+    assert SG.split_like(450.41, 144.36) == 3.0   # 3-for-1 plus a -3.9 % real move (SOXX, 5 Nov 13:10)
+    assert SG.split_like(100, 45) is None       # -55 %: not within 7 % of a 2-for-1 or 5-for-2
     assert SG.split_like(100, 80) is None       # a 20 % move is never checked
     assert SG.split_text(3) == "3-for-1 split" and SG.split_text(0.1) == "1-for-10 reverse split"
 
@@ -106,3 +107,13 @@ def test_split_listed_in_config_when_yahoo_has_no_event_yet(make_watch):
     res, _, errs = _poll(w, state)
     _check_fixed(w, state, res, close)
     assert not any("GOOGL: held" in e for e in errs)
+
+
+def test_listed_split_is_checked_even_when_the_real_move_is_large(make_watch):
+    w, m, state, close = _setup(make_watch, adjusted=False, event=False)
+    w.CFG["splits"] = {"GOOGL": [["2026-11-05", 3]]}
+    m.prices = {"GOOGL": close / 3 * 0.85}           # 3-for-1 and a real -15 % move
+    res, _, errs = _poll(w, state)
+    g = next(o for o in res[0] if o["t"] == "GOOGL")
+    assert abs(g["d"]["c"][-1] - close / 3) < 1e-6 * close
+    assert any("-15.0%" in n for n in w.SPLIT_NOTES)
