@@ -1562,8 +1562,17 @@ def _shares(dollars, px):
     return f" (about {dollars / px:.0f} shares at {money('QQQ', px)})" if px else ""
 
 
+def _migrate_hedge(rec):
+    """A hedge stored before the split (one QQQ/PSQ record) becomes its QQQ leg."""
+    if rec and "legs" not in rec:
+        return {"legs": {"QQQ": {"proxy": "QQQ", "fund": "PSQ", "lev": 1, "on": rec["on"], "days": rec["days"],
+                                 "proxy_px": rec["proxy_px"], "rebound_pct": rec["rebound_pct"],
+                                 "max_sessions": rec["max_sessions"]}}}
+    return rec
+
+
 def hedge_messages(rows, state, sess):
-    """REAL-TIME hedge suggestions and their exits, one message each, sized from the secret."""
+    """REAL-TIME split-hedge suggestions and their exits, sized from the secret. Telegram only."""
     out = []
     groups = (CFG.get("hedge") or {}).get("groups") or []
     if not groups or H is None or OR.shape(H) != "v2" or OR.stale(H, CTX.get("today") or dt.date.today()):
@@ -1572,40 +1581,48 @@ def hedge_messages(rows, state, sess):
     today = (CTX.get("today") or dt.date.today()).isoformat()
     store = state.setdefault("hedge", {})
     off_today = state.setdefault("hedge_off", {})
+    minimum = H.get("min_order_usd") or 200
     for g in groups:
-        name, proxy = g["name"], g["proxy"]
+        name = g["name"]
         members = CFG.get(g["members"], []) if isinstance(g["members"], str) else g["members"]
-        po = by_t.get(proxy)
-        if po is None or po.get("sess") not in ("REGULAR", "PRE", "POST"):
-            continue
-        ev, d, px = po["ev"], po["d"], po["px"]
-        mid = (ev["up"] + ev["lo"]) / 2
-        held = store.get(name)
-        if held:                                   # an open hedge: look for its exit
-            if held["days"][-1] != today:
-                held["days"].append(today)
-            sessions = len(held["days"]) - 1
-            why = HG.should_exit(held, px, "BUY" in (ev["k"], ev["r"]), mid, sessions)
-            if why and why.startswith("KEEP_1X"):
-                if not held.get("told_3x"):
-                    held["told_3x"] = True
-                    out.append(f"🛡️ <b>HEDGE — {esc(name)}: 3x time limit</b>\n{when_text()} · REAL-TIME\n\n"
-                               f"If you used <b>{g['inverse3']}</b>, sell it now: a 3x fund held longer than "
-                               f"{held['max_sessions_3x']} sessions drifts away from 3x the fall. A "
-                               f"<b>{g['inverse']}</b> hedge can stay until one of its exits.\n\n"
-                               "<i>Alert only. Nothing has been traded.</i>")
-            elif why:
-                store.pop(name, None)
-                off_today[name] = today
-                out.append(f"🛡️ <b>HEDGE OFF — {esc(name)}</b>\n{when_text()} · REAL-TIME\n\n"
-                           f"{esc(proxy)} {money(proxy, px)}. <b>Remove the hedge</b> ({g['inverse']} or "
-                           f"{g['inverse3']}): {why}.\n\n<i>Alert only. Nothing has been traded.</i>")
-            continue
-        if off_today.get(name) == today:
-            continue
-        hit, reason = HG.crash(px, d["c"][-1], d.get("sigma"), (d.get("hist") or {}).get("c", [])[-20:],
-                               ev["lo"], g)
-        if not hit:
+        rec = _migrate_hedge(store.get(name)) or {"legs": {}}
+        store[name] = rec
+        legs = {L["proxy"]: L for L in g["legs"]}
+        live_px = {p: by_t[p] for p in legs if p in by_t and by_t[p].get("sess") in ("REGULAR", "PRE", "POST")}
+        # 1. exits of open legs, each against its own index
+        for p, leg in list(rec["legs"].items()):
+            po = live_px.get(p)
+            if po is None:
+                continue
+            ev = po["ev"]
+            if leg["days"][-1] != today:
+                leg["days"].append(today)
+            why = HG.should_exit(leg, po["px"], "BUY" in (ev["k"], ev["r"]), (ev["up"] + ev["lo"]) / 2,
+                                 len(leg["days"]) - 1)
+            if why:
+                rec["legs"].pop(p)
+                off_today[f"{name}:{p}"] = today
+                if "session limit" in why:      # timed out mid-crash: no new leg until this crash ends
+                    rec.setdefault("wait", {})[p] = True
+                out.append(f"🛡️ <b>HEDGE OFF — {esc(name)}: {leg['fund']}</b>\n{when_text()} · REAL-TIME\n\n"
+                           f"{esc(p)} {money(p, po['px'])}. <b>Sell the {leg['fund']} hedge</b>: {why}."
+                           + (f" The {', '.join(sorted(rec['legs'][q]['fund'] for q in rec['legs']))} hedge stays "
+                              f"until its own exit." if rec["legs"] else "")
+                           + "\n\n<i>Alert only. Nothing has been traded.</i>")
+        # 2. which index's leg crashed now
+        crashed = {}
+        for p, L in legs.items():
+            po = live_px.get(p)
+            if po is None or p in rec["legs"] or off_today.get(f"{name}:{p}") == today:
+                continue
+            d = po["d"]
+            hit, reason = HG.crash(po["px"], d["c"][-1], d.get("sigma"), (d.get("hist") or {}).get("c", [])[-20:],
+                                   po["ev"]["lo"], g)
+            if not hit:
+                rec.get("wait", {}).pop(p, None)      # the crash that timed a leg out is over
+            elif not rec.get("wait", {}).get(p):
+                crashed[p] = reason
+        if not crashed:
             continue
         closes = dict(CTX.get("closes") or {})
         closes.update({o["t"]: o["px"] for o in rows if not is_fx(o["t"])})
@@ -1617,42 +1634,59 @@ def hedge_messages(rows, state, sess):
         w = gv / b["total"] * 100
         if w < g["min_weight_pct"]:
             continue
-        pc = _closes_by_date(d)
-        betas = {t: HG.beta(_closes_by_date(by_t[t]["d"]), pc) if t in by_t else None for t in vals}
-        expo, used = HG.exposure(vals, betas)
-        sz = HG.size(expo, g)
-        if sz["inverse"] < (H.get("min_order_usd") or 200):
+        pcs = {p: _closes_by_date(by_t[p]["d"]) for p in legs if p in by_t}
+        mcs = {t: _closes_by_date(by_t[t]["d"]) if t in by_t else {} for t in vals}
+        home = HG.assign(mcs, pcs, g["legs"][0]["proxy"])
+        plan, total = [], 0.0
+        for p, reason in crashed.items():
+            L = legs[p]
+            mine = {t: v for t, v in vals.items() if home.get(t) == p}
+            if not mine:
+                continue
+            betas = {t: HG.beta(mcs[t], pcs[p]) for t in mine}
+            expo, used = HG.exposure(mine, betas)
+            dollars = HG.size(expo, g, L["lev"])
+            if dollars < minimum:
+                continue
+            fpx = _inverse_price(L["fund"])
+            plan.append((p, L, reason, mine, used, expo, dollars, fpx))
+            total += dollars
+        if not plan:
             continue
-        p1, p3 = _inverse_price(g["inverse"]), _inverse_price(g["inverse3"])
         cap = H.get("ai_cap_pct") or 30
         trim = gv - cap / 100 * b["total"]
-        fund, _ = OR.funding(H, sz["inverse"], b, closes)
-        fund3, _ = OR.funding(H, sz["inverse3"], b, closes)
-        top = sorted(used.items(), key=lambda kv: -vals[kv[0]])[:3]
-        store[name] = {"on": today, "days": [today], "proxy_px": px, "rebound_pct": g["rebound_pct"],
-                       "max_sessions": g["max_sessions"], "max_sessions_3x": g["max_sessions_3x"]}
+        fund_txt, _ = OR.funding(H, total, b, closes)
         lines = [f"🛡️ <b>HEDGE CHECK — {esc(name)}</b>",
-                 f"{when_text()} · REAL-TIME, {sess_text(proxy, po.get('sess'))}", "",
-                 f"Your {esc(name)} is <b>{w:.0f}%</b> of your money. {esc(proxy)} is at "
-                 f"{money(proxy, px)}: {reason}.", "",
-                 f"<b>Rule H suggests a temporary hedge of half your {esc(name)} exposure:</b>",
-                 f"• <b>Buy ≈${sz['inverse']:,.0f} of {g['inverse']}</b>{_shares(sz['inverse'], p1)}. "
-                 f"It rises about 1% for each 1% {proxy} falls. "
-                 + (f"Funding: {fund}." if fund else "Not enough cash and SGOV above its floor for all of it."),
-                 f"• Or <b>≈${sz['inverse3']:,.0f} of {g['inverse3']}</b>{_shares(sz['inverse3'], p3)}, "
-                 f"3x, for {g['max_sessions_3x']} sessions at most. "
-                 + (f"Funding: {fund3}." if fund3 else ""),
-                 (f"• Or the no-tax permanent fix: trim the group back to your {cap:.0f}% cap by selling "
-                  f"≈${trim:,.0f}." if trim > (H.get("min_order_usd") or 200) else
-                  f"• Trimming is not needed for the cap: the group is within {cap:.0f}%."), "",
-                 f"<b>Remove it when</b> your Rule A gives a BUY on {proxy}, {proxy} is back above "
-                 f"{money(proxy, mid)} (middle of its range), {proxy} reaches "
-                 f"{money(proxy, px * (1 + g['rebound_pct'] / 100))} (+{g['rebound_pct']:.0f}%), or after "
-                 f"{g['max_sessions']} sessions. I'll message you when one happens.", "",
-                 f"<i>Sized from ${gv:,.0f} in the group x its sensitivity to {proxy} "
-                 f"({', '.join(f'{t} {bb:.1f}' for t, bb in top)}) = ${expo:,.0f} of {proxy}-equivalent. "
-                 f"A hedge reduces losses if the fall continues and costs some of the rebound if it doesn't.</i>",
-                 "", "<i>Alert only. Nothing has been traded.</i>"]
+                 f"{when_text()} · REAL-TIME", "",
+                 f"Your {esc(name)} is <b>{w:.0f}%</b> of your money."]
+        for p, L, reason, *_ in plan:
+            lines.append(f"{esc(p)} is at {money(p, live_px[p]['px'])}: {reason}.")
+        lines += ["", f"<b>Rule H suggests a temporary hedge of half the exposure, each stock against the "
+                      f"index it follows most closely:</b>"]
+        for p, L, reason, mine, used, expo, dollars, fpx in plan:
+            names = ", ".join(sorted(mine, key=lambda t: -mine[t]))
+            lines.append(f"• <b>Buy ≈${dollars:,.0f} of {L['fund']}</b>{_shares(dollars, fpx)}"
+                         f"{' (3x)' if L['lev'] == 3 else ''}: covers {names} "
+                         f"(${sum(mine.values()):,.0f}, ≈${expo:,.0f} of {p}-equivalent). "
+                         f"Hold {L['max_sessions']} sessions at most.")
+        lines.append(f"Funding for ≈${total:,.0f}: " + (fund_txt + "." if fund_txt else
+                     "not enough cash and SGOV above its floor for all of it."))
+        lines += [(f"• Or the no-tax permanent fix: trim the group back to your {cap:.0f}% cap by selling "
+                   f"≈${trim:,.0f}." if trim > minimum else
+                   f"• Trimming is not needed for the cap: the group is within {cap:.0f}%."), ""]
+        for p, L, *_ in plan:
+            po = live_px[p]
+            mid = (po["ev"]["up"] + po["ev"]["lo"]) / 2
+            lines.append(f"<b>Sell the {L['fund']}</b> when your Rule A gives a BUY on {p}, {p} is back above "
+                         f"{money(p, mid)} (middle of its range), {p} reaches "
+                         f"{money(p, po['px'] * (1 + g['rebound_pct'] / 100))} (+{g['rebound_pct']:.0f}%), or after "
+                         f"{L['max_sessions']} sessions.")
+            rec["legs"][p] = {"proxy": p, "fund": L["fund"], "lev": L["lev"], "on": today, "days": [today],
+                              "proxy_px": po["px"], "rebound_pct": g["rebound_pct"],
+                              "max_sessions": L["max_sessions"]}
+        lines += ["I'll message you when each one happens.", "",
+                  "<i>A hedge reduces losses if the fall continues and costs some of the rebound if it doesn't. "
+                  "A 3x fund is for days, not weeks.</i>", "", "<i>Alert only. Nothing has been traded.</i>"]
         out.append("\n".join(lines))
     return out
 

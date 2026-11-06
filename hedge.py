@@ -6,10 +6,12 @@ Trigger (both):
   1. the group is at least `min_weight_pct` of the book;
   2. the group's proxy ETF fell at least `z` times its usual daily move today, or is at least
      `dd20_pct` below its 20-session high, AND it is below the bottom of its price range.
-Size: hedge `ratio` of the beta-weighted group exposure; -1x inverse dollars = ratio x exposure,
-      -3x dollars = that / 3.
-Exit (first to happen): a Rule A BUY on the proxy; the proxy back above the middle of its range;
-      the proxy 5 % above where the hedge started; the time limit (20 sessions -1x, 5 sessions -3x).
+Split hedge (Dongmin 2026-11-06): each stock is hedged against the index it follows most closely
+(highest R^2 of daily returns): chip-like names against SOXX with SOXS (-3x), the rest against QQQ
+with PSQ (-1x). A leg opens when ITS index crashes.
+Size per leg: `ratio` x the leg's beta-weighted exposure, divided by the fund's leverage.
+Exit per leg (first to happen): a Rule A BUY on its index; the index back above the middle of its
+      range; the index 5 % above where the leg started; the leg's time limit (20 sessions -1x, 5 -3x).
 """
 
 
@@ -28,6 +30,36 @@ def beta(member, proxy, min_n=20):
     if not var:
         return None
     return sum((x - mp) * (y - mm) for x, y in zip(rp, rm)) / var
+
+
+def r2(member, proxy, min_n=20):
+    """Share of the member's daily moves explained by the proxy (squared correlation)."""
+    days = sorted(set(member) & set(proxy))
+    rm, rp = [], []
+    for a, b in zip(days, days[1:]):
+        if member[a] and member[b] and proxy[a] and proxy[b]:
+            rm.append(member[b] / member[a] - 1)
+            rp.append(proxy[b] / proxy[a] - 1)
+    n = len(rp)
+    if n < min_n:
+        return None
+    mm, mp = sum(rm) / n, sum(rp) / n
+    cov = sum((x - mp) * (y - mm) for x, y in zip(rp, rm))
+    vp, vm = sum((x - mp) ** 2 for x in rp), sum((y - mm) ** 2 for y in rm)
+    return (cov * cov) / (vp * vm) if vp and vm else None
+
+
+def assign(member_closes, proxy_closes, default):
+    """{ticker: proxy}: each member goes to the proxy with the highest R^2; `default` when unknown."""
+    out = {}
+    for t, mc in member_closes.items():
+        best, best_r = default, -1.0
+        for p, pc in proxy_closes.items():
+            r = r2(mc, pc) if mc else None
+            if r is not None and r > best_r:
+                best, best_r = p, r
+        out[t] = best
+    return out
 
 
 def crash(px, prev_close, sigma, closes20, lower, cfg):
@@ -61,21 +93,19 @@ def exposure(values, betas, default_beta=1.0):
     return tot, used
 
 
-def size(expo, cfg):
-    d1 = cfg["ratio"] * expo
-    return {"inverse": d1, "inverse3": d1 / 3}
+def size(expo, cfg, lev=1):
+    return cfg["ratio"] * expo / lev
 
 
-def should_exit(h, proxy_px, proxy_signal_buy, proxy_mid, sessions):
-    """h: the stored hedge. Returns a plain reason, or None to keep it."""
+def should_exit(leg, proxy_px, proxy_signal_buy, proxy_mid, sessions):
+    """leg: the stored leg. Returns a plain reason, or None to keep it."""
     if proxy_signal_buy:
-        return "your Rule A gave a BUY on the sector ETF"
+        return f"your Rule A gave a BUY on {leg['proxy']}"
     if proxy_mid is not None and proxy_px > proxy_mid:
-        return "the sector ETF is back above the middle of its normal range"
-    if proxy_px >= h["proxy_px"] * (1 + h["rebound_pct"] / 100):
-        return f"the sector ETF rebounded {h['rebound_pct']:.0f}% from where the hedge started"
-    if sessions >= h["max_sessions"]:
-        return f"the {h['max_sessions']}-session limit for a -1x hedge is up"
-    if sessions >= h["max_sessions_3x"]:
-        return f"KEEP_1X:{h['max_sessions_3x']}"
+        return f"{leg['proxy']} is back above the middle of its normal range"
+    if proxy_px >= leg["proxy_px"] * (1 + leg["rebound_pct"] / 100):
+        return f"{leg['proxy']} rebounded {leg['rebound_pct']:.0f}% from where the hedge started"
+    if sessions >= leg["max_sessions"]:
+        return (f"the {leg['max_sessions']}-session limit for a {leg['lev']}x fund is up"
+                + (" (a 3x fund held longer drifts away from 3x the fall)" if leg["lev"] > 1 else ""))
     return None
