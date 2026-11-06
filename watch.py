@@ -5,7 +5,8 @@ import json, os, re, io, sys, time, math, random, uuid, subprocess, urllib.reque
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import signals as SG                                         # noqa: E402  shared with the post-close run
-import orders as OR                                          # noqa: E402
+import orders as OR
+import hedge as HG                                          # noqa: E402
 from signals import ema, atr, rsi, states, edges             # noqa: E402,F401
 
 TOK, CHAT = os.environ.get("TG_TOKEN", ""), os.environ.get("TG_CHAT", "")
@@ -1222,7 +1223,7 @@ def poll(state):
         # so an after-hours cross is not reported again at the next pre-market.
         # The evening check may run after midnight, so yesterday's alert list is kept for it.
         last = {"day": state.get("day"), "sent": state.get("sent", [])}
-        keep = {k: state.get(k) for k in ("obs", "fx_version", "settled_done", "paused", "splits")}
+        keep = {k: state.get(k) for k in ("obs", "fx_version", "settled_done", "paused", "splits", "hedge")}
         state.clear()
         state.update({"day": today, "sent": [], "pending": {}, "last_day": last})
         state.update({k: v for k, v in keep.items() if v is not None})
@@ -1507,6 +1508,119 @@ def decide(rows, alerts, state, sess):
 
 
 
+# ---------------------------------------------------------------- Rule H: hedge a crashing sector
+def _closes_by_date(d):
+    h = d.get("hist") or {}
+    return {k: v for k, v in zip(h.get("dates") or [], h.get("c") or []) if k and v}
+
+
+def _inverse_price(t):
+    try:
+        return live(t)["px"]
+    except Exception as e:
+        print(f"{t}: {e}", file=sys.stderr)
+        return None
+
+
+def _shares(dollars, px):
+    return f" (about {dollars / px:.0f} shares at {money('QQQ', px)})" if px else ""
+
+
+def hedge_messages(rows, state, sess):
+    """REAL-TIME hedge suggestions and their exits, one message each, sized from the secret."""
+    out = []
+    groups = (CFG.get("hedge") or {}).get("groups") or []
+    if not groups or H is None or OR.shape(H) != "v2" or OR.stale(H, CTX.get("today") or dt.date.today()):
+        return out
+    by_t = {o["t"]: o for o in rows}
+    today = (CTX.get("today") or dt.date.today()).isoformat()
+    store = state.setdefault("hedge", {})
+    off_today = state.setdefault("hedge_off", {})
+    for g in groups:
+        name, proxy = g["name"], g["proxy"]
+        members = CFG.get(g["members"], []) if isinstance(g["members"], str) else g["members"]
+        po = by_t.get(proxy)
+        if po is None or po.get("sess") not in ("REGULAR", "PRE", "POST"):
+            continue
+        ev, d, px = po["ev"], po["d"], po["px"]
+        mid = (ev["up"] + ev["lo"]) / 2
+        held = store.get(name)
+        if held:                                   # an open hedge: look for its exit
+            if held["days"][-1] != today:
+                held["days"].append(today)
+            sessions = len(held["days"]) - 1
+            why = HG.should_exit(held, px, "BUY" in (ev["k"], ev["r"]), mid, sessions)
+            if why and why.startswith("KEEP_1X"):
+                if not held.get("told_3x"):
+                    held["told_3x"] = True
+                    out.append(f"🛡️ <b>HEDGE — {esc(name)}: 3x time limit</b>\n{when_text()} · REAL-TIME\n\n"
+                               f"If you used <b>{g['inverse3']}</b>, sell it now: a 3x fund held longer than "
+                               f"{held['max_sessions_3x']} sessions drifts away from 3x the fall. A "
+                               f"<b>{g['inverse']}</b> hedge can stay until one of its exits.\n\n"
+                               "<i>Alert only. Nothing has been traded.</i>")
+            elif why:
+                store.pop(name, None)
+                off_today[name] = today
+                out.append(f"🛡️ <b>HEDGE OFF — {esc(name)}</b>\n{when_text()} · REAL-TIME\n\n"
+                           f"{esc(proxy)} {money(proxy, px)}. <b>Remove the hedge</b> ({g['inverse']} or "
+                           f"{g['inverse3']}): {why}.\n\n<i>Alert only. Nothing has been traded.</i>")
+            continue
+        if off_today.get(name) == today:
+            continue
+        hit, reason = HG.crash(px, d["c"][-1], d.get("sigma"), (d.get("hist") or {}).get("c", [])[-20:],
+                               ev["lo"], g)
+        if not hit:
+            continue
+        closes = dict(CTX.get("closes") or {})
+        closes.update({o["t"]: o["px"] for o in rows if not is_fx(o["t"])})
+        b = OR.book(H, closes, CTX.get("usdsgd"), set(members))
+        if not b["total"]:
+            continue
+        vals = {t: v for t, v in b["values"].items() if t in members}
+        gv = sum(vals.values())
+        w = gv / b["total"] * 100
+        if w < g["min_weight_pct"]:
+            continue
+        pc = _closes_by_date(d)
+        betas = {t: HG.beta(_closes_by_date(by_t[t]["d"]), pc) if t in by_t else None for t in vals}
+        expo, used = HG.exposure(vals, betas)
+        sz = HG.size(expo, g)
+        if sz["inverse"] < (H.get("min_order_usd") or 200):
+            continue
+        p1, p3 = _inverse_price(g["inverse"]), _inverse_price(g["inverse3"])
+        cap = H.get("ai_cap_pct") or 30
+        trim = gv - cap / 100 * b["total"]
+        fund, _ = OR.funding(H, sz["inverse"], b, closes)
+        fund3, _ = OR.funding(H, sz["inverse3"], b, closes)
+        top = sorted(used.items(), key=lambda kv: -vals[kv[0]])[:3]
+        store[name] = {"on": today, "days": [today], "proxy_px": px, "rebound_pct": g["rebound_pct"],
+                       "max_sessions": g["max_sessions"], "max_sessions_3x": g["max_sessions_3x"]}
+        lines = [f"🛡️ <b>HEDGE CHECK — {esc(name)}</b>",
+                 f"{when_text()} · REAL-TIME, {sess_text(proxy, po.get('sess'))}", "",
+                 f"Your {esc(name)} is <b>{w:.0f}%</b> of your money. {esc(proxy)} is at "
+                 f"{money(proxy, px)}: {reason}.", "",
+                 f"<b>Rule H suggests a temporary hedge of half your {esc(name)} exposure:</b>",
+                 f"• <b>Buy ≈${sz['inverse']:,.0f} of {g['inverse']}</b>{_shares(sz['inverse'], p1)}. "
+                 f"It rises about 1% for each 1% {proxy} falls. "
+                 + (f"Funding: {fund}." if fund else "Not enough cash and SGOV above its floor for all of it."),
+                 f"• Or <b>≈${sz['inverse3']:,.0f} of {g['inverse3']}</b>{_shares(sz['inverse3'], p3)}, "
+                 f"3x, for {g['max_sessions_3x']} sessions at most. "
+                 + (f"Funding: {fund3}." if fund3 else ""),
+                 (f"• Or the no-tax permanent fix: trim the group back to your {cap:.0f}% cap by selling "
+                  f"≈${trim:,.0f}." if trim > (H.get("min_order_usd") or 200) else
+                  f"• Trimming is not needed for the cap: the group is within {cap:.0f}%."), "",
+                 f"<b>Remove it when</b> your Rule A gives a BUY on {proxy}, {proxy} is back above "
+                 f"{money(proxy, mid)} (middle of its range), {proxy} reaches "
+                 f"{money(proxy, px * (1 + g['rebound_pct'] / 100))} (+{g['rebound_pct']:.0f}%), or after "
+                 f"{g['max_sessions']} sessions. I'll message you when one happens.", "",
+                 f"<i>Sized from ${gv:,.0f} in the group x its sensitivity to {proxy} "
+                 f"({', '.join(f'{t} {bb:.1f}' for t, bb in top)}) = ${expo:,.0f} of {proxy}-equivalent. "
+                 f"A hedge reduces losses if the fall continues and costs some of the rebound if it doesn't.</i>",
+                 "", "<i>Alert only. Nothing has been traded.</i>"]
+        out.append("\n".join(lines))
+    return out
+
+
 # ---------------------------------------------------------------- evening check (settled pass)
 SETTLED_FROM = (16, 15)        # New York time; the official close is normally in by then
 
@@ -1741,6 +1855,10 @@ def main():
     rows, sess, alerts, errs, want_list = res
 
     outbox = [(n, None) for n in SPLIT_NOTES] + decide(rows, alerts, state, sess)
+    try:
+        outbox += [(m, None) for m in hedge_messages(rows, state, sess)]
+    except Exception as e:                     # a hedge check must never stop the alerts
+        print(f"hedge check failed: {e}", file=sys.stderr)
     # Save memory BEFORE sending, so a crash mid-send can never cause a repeat.
     json.dump(state, open(STATE, "w"))
     for text, png in outbox:
