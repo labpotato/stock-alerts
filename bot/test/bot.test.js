@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { answer, compactStatus, dispatchAlerter, isAllowed, requestParams, splitMessage, SYSTEM, MODEL } from "../src/bot.js";
+import { answer, compactStatus, dispatchAlerter, holdingsFor, isAllowed, requestParams, splitMessage, SYSTEM, MODEL } from "../src/bot.js";
 
 const STATUS = JSON.parse(readFileSync(new URL("../../docs/status.json", import.meta.url)));
 const ENV = { TG_TOKEN: "t0k", TG_CHAT: "111", TG_WEBHOOK_SECRET: "s3cret",
@@ -145,4 +145,19 @@ test("the heartbeat starts one alerter run on GitHub, and does nothing without a
   assert.equal(calls.length, 0);
   const denied = async () => ({ status: 403, text: async () => "Resource not accessible" });
   assert.deepEqual(await dispatchAlerter({ GH_DISPATCH_TOKEN: "bad" }, denied), { ok: false, status: 403 });
+});
+
+test("holdings come from the newer of the shared private file and the secret", async () => {
+  const file = { as_of: "2026-11-06", cash_usd: 1, tickers: { GLDM: { shares: 777 } } };
+  const env = { ...ENV, HOLDINGS_TOKEN: "ro", HOLDINGS_REPO: "labpotato/portfolio-private" };
+  const seen = [];
+  const fake = async (url, init) => { seen.push({ url, init }); return { ok: true, text: async () => JSON.stringify(file) }; };
+  assert.equal((await holdingsFor(env, fake)).tickers.GLDM.shares, 777);
+  assert.equal(seen[0].url, "https://api.github.com/repos/labpotato/portfolio-private/contents/holdings.json");
+  assert.equal(seen[0].init.headers.authorization, "Bearer ro");
+  const older = async () => ({ ok: true, text: async () => JSON.stringify({ ...file, as_of: "2026-10-01" }) });
+  assert.equal((await holdingsFor(env, older)).tickers.GLDM.shares, 4321);           // the secret is newer
+  const down = async () => ({ ok: false, text: async () => "" });
+  assert.equal((await holdingsFor(env, down)).tickers.GLDM.shares, 4321);
+  assert.equal((await holdingsFor(ENV, fake)).tickers.GLDM.shares, 4321);            // no token: never fetched
 });

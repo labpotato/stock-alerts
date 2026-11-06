@@ -102,3 +102,14 @@ def test_holdings_never_reach_a_public_file(make_watch, tmp_path):
     for secret in ("98765", "4321", "6543"):
         assert secret not in public, f"{secret} leaked into a published file"
     assert any("Fires:" in t for t, _ in msgs)          # the sizing does reach Telegram
+
+
+def test_the_newer_of_the_shared_holdings_file_and_the_secret_is_used(make_watch):
+    w, _ = make_watch()
+    old, new = {"as_of": "2026-11-04", "tickers": {}}, {"as_of": "2026-11-06", "tickers": {}}
+    assert w.choose_holdings(new, old) == (new, "shared file")
+    assert w.choose_holdings(old, new) == (new, "secret")
+    assert w.choose_holdings(new, new)[1] == "shared file"          # a tie goes to the shared file
+    assert w.choose_holdings(None, old) == (old, "secret")
+    assert w.choose_holdings(None, None) == (None, "none")
+    assert w._holdings_file() is None                                # no token in tests: never fetched

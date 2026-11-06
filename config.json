@@ -163,5 +163,7 @@
         "max_sessions_3x": 5
       }
     ]
-  }
+  },
+  "holdings_repo": "labpotato/portfolio-private",
+  "_holdings_repo_note": "Private repo whose holdings.json (v2 shape) the post-close run keeps up to date. Read with the HOLDINGS_TOKEN secret (read-only). The newer of it and HOLDINGS_JSON, by as_of, is used."
 }

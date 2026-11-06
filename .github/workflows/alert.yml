@@ -41,6 +41,7 @@ jobs:
           TG_TOKEN:      ${{ secrets.TG_TOKEN }}
           TG_CHAT:       ${{ secrets.TG_CHAT }}
           HOLDINGS_JSON: ${{ secrets.HOLDINGS_JSON }}
+          HOLDINGS_TOKEN: ${{ secrets.HOLDINGS_TOKEN }}
           MODE:          ${{ inputs.mode || (github.event.schedule == '20,50 20,21 * * 1-5' && 'settled') || 'poll' }}
           NOTE:          ${{ inputs.note }}
       - name: Save state and publish status
