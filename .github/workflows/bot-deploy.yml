@@ -19,7 +19,7 @@ jobs:
       run:
         working-directory: bot
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check the secrets are in place
         id: ready
         # The raw secrets reach this step only. It passes cleaned, masked copies to later steps.
@@ -54,7 +54,7 @@ jobs:
             exit 1
           fi
           echo "go=yes" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.ready.outputs.go == 'yes'
         with: {node-version: '22'}
       - name: Install and test
