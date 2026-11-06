@@ -1734,6 +1734,11 @@ def evening(state, manual=False):
         print(f"evening check failed: {e}", file=sys.stderr)
         return
     json.dump(state, open(STATE, "w"))      # record 'done' before sending, so nothing repeats
+    if not CFG.get("evening_messages", True):
+        # Dongmin 2026-11-06: real-time alerts only. The evening check still runs and writes the
+        # settled block in status.json (the post-close run's cross-check), but sends nothing.
+        print(f"evening check done: {len(msgs)} message(s) not sent (evening_messages off)")
+        return
     for text, png in msgs:
         notify(text, png)
         time.sleep(0.7)
