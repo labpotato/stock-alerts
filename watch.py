@@ -25,20 +25,56 @@ CONFIRM_THIN = CFG.get("confirm_thin_extended", True)
 
 
 # ---------------------------------------------------------------- holdings (secret)
-def holdings():
+def _holdings_secret():
     raw = os.environ.get("HOLDINGS_JSON", "").strip()
     if not raw:
         return None
     try:
         h = json.loads(raw)
-        if "tickers" not in h:
-            return None
-        return h
+        return h if "tickers" in h else None
     except Exception as e:
         print(f"HOLDINGS_JSON is not valid JSON: {e}", file=sys.stderr)
         return None
 
 
+def _holdings_file():
+    """holdings.json in the PRIVATE repo the post-close run keeps up to date (config holdings_repo),
+    read with the read-only HOLDINGS_TOKEN. Its content is never printed or written anywhere."""
+    repo = os.environ.get("HOLDINGS_REPO", "").strip() or CFG.get("holdings_repo", "")
+    tok = os.environ.get("HOLDINGS_TOKEN", "").strip()
+    if not repo or not tok:
+        return None
+    req = urllib.request.Request(f"https://api.github.com/repos/{repo}/contents/holdings.json",
+                                 headers={"Authorization": f"Bearer {tok}", "User-Agent": "stock-alerts",
+                                          "Accept": "application/vnd.github.raw+json",
+                                          "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            h = json.load(r)
+        return h if isinstance(h, dict) and "tickers" in h else None
+    except Exception as e:
+        print(f"shared holdings file not read ({type(e).__name__}); using the secret", file=sys.stderr)
+        return None
+
+
+def choose_holdings(shared, secret):
+    """The newer of the shared file and the secret, by as_of; the shared file wins a tie."""
+    if shared and secret:
+        return (shared, "shared file") if str(shared.get("as_of", "")) >= str(secret.get("as_of", "")) \
+            else (secret, "secret")
+    if shared:
+        return shared, "shared file"
+    return (secret, "secret") if secret else (None, "none")
+
+
+def holdings():
+    h, src = choose_holdings(_holdings_file(), _holdings_secret())
+    global HOLDINGS_SOURCE
+    HOLDINGS_SOURCE = src
+    return h
+
+
+HOLDINGS_SOURCE = "none"
 H0 = holdings()
 H = H0
 
@@ -1827,7 +1863,8 @@ def main():
                               "SAMPLE CHART: not a signal", "#546e7a", "price now")
         except Exception as e:
             msg, png = f"⚠️ price fetch failed: {e}", None
-        hs = "set" if H else "NOT SET (alerts will say so)"
+        hs = (f"from the {HOLDINGS_SOURCE}, as of {esc(str(H.get('as_of')))}" if H
+              else "NOT SET (alerts will say so)")
         notify("✅ <b>Stock alerts are working.</b>\n\n" + esc(msg) +
                f"\n\nHoldings secret: {hs}\nTickers watched: {len(CFG['tickers'])}\n\n"
                "<i>This is what an alert chart looks like. It is a sample, not a signal.</i>", png)

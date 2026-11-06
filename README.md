@@ -35,6 +35,15 @@ The full list is **not** sent automatically. Run the workflow with `digest` if y
 it at the same moment you get one STRONG message; if the second agrees later the same day you get one
 short "Now STRONG" line (no second chart), and then nothing more for that ticker and side until the next trading day.
 
+## Holdings: one shared private file (2026-11-06)
+
+Both the alerter and the Claude post-close run read **`holdings.json` in the private repo
+`labpotato/portfolio-private`** (same shape as `holdings.example.json`). The post-close run keeps it in
+step with its holdings doc, so a trade reported there reaches the alerter and the Telegram bot at its
+next run. The alerter reads it with the read-only `HOLDINGS_TOKEN` secret and uses the newer (by
+`as_of`) of that file and the old `HOLDINGS_JSON` secret, which stays as a fallback. Nothing from it is
+ever printed, committed or published here.
+
 ## Two kinds of signal
 
 | | REAL-TIME alert | Evening check |

@@ -77,15 +77,34 @@ export function compactStatus(s) {
   return out;
 }
 
-export function holdingsFor(env) {
-  if (!env.HOLDINGS_JSON) return null;
+function parseHoldings(text) {
   try {
-    const h = JSON.parse(env.HOLDINGS_JSON);
+    const h = typeof text === "string" ? JSON.parse(text) : text;
+    if (!h || typeof h !== "object" || !h.tickers) return null;
     delete h._note; delete h._shape;
     return h;
   } catch {
     return null;
   }
+}
+
+// The newer (by as_of) of the shared holdings.json in the private repo and the HOLDINGS_JSON secret.
+export async function holdingsFor(env, doFetch) {
+  const secret = env.HOLDINGS_JSON ? parseHoldings(env.HOLDINGS_JSON) : null;
+  let shared = null;
+  if (env.HOLDINGS_TOKEN && env.HOLDINGS_REPO && doFetch) {
+    try {
+      const res = await doFetch(`https://api.github.com/repos/${env.HOLDINGS_REPO}/contents/holdings.json`, {
+        headers: { authorization: `Bearer ${env.HOLDINGS_TOKEN}`, accept: "application/vnd.github.raw+json",
+                   "user-agent": "stock-alerts-bot", "x-github-api-version": "2022-11-28" },
+      });
+      if (res.ok) shared = parseHoldings(await res.text());
+    } catch {
+      shared = null;
+    }
+  }
+  if (shared && secret) return String(shared.as_of || "") >= String(secret.as_of || "") ? shared : secret;
+  return shared || secret;
 }
 
 export function buildUserContent(msg, status, holdings) {
@@ -182,7 +201,7 @@ export async function answer(env, msg, deps) {
     status = null;
   }
 
-  const messages = [{ role: "user", content: buildUserContent(msg, status, holdingsFor(env)) }];
+  const messages = [{ role: "user", content: buildUserContent(msg, status, await holdingsFor(env, doFetch)) }];
   let response;
   try {
     for (let i = 0; ; i++) {
