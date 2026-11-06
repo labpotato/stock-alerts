@@ -21,13 +21,16 @@ Every message is about **one ticker** (or one group finding) and comes with a ch
 | A ticker moves far more than it usually does | One "unusual move" message with a chart. On a day the market itself moves unusually, one "whole market" message instead, and a ticker only if it moves unusually *compared with the market* |
 | Your AI stocks split from the S&P 500, or most of the list falls together | One group message with a bar chart |
 
-**Rule H, hedge check (2026-11-06).** When a group you are heavy in (the AI group, at least 25% of
-your money) crashes (QQQ down at least 2.5x its usual daily move, or 10% below its 20-day high, and
-below the bottom of its range), one 🛡️ message suggests a temporary hedge of half the group's
-beta-weighted exposure: ≈$X of PSQ (-1x), or a third of that in SQQQ (-3x, 5 sessions at most), or a
-trim back to the 30% cap. A 🛡️ HEDGE OFF message follows at the first exit: a Rule A BUY on QQQ, QQQ
-back above the middle of its range, +5% from the start, or 20 sessions. Sized from the holdings secret,
-Telegram only; settings in `config.json` → `hedge`. It never trades.
+**Rule H, split hedge check (2026-11-06).** When a group you are heavy in (the AI group, at least 25%
+of your money) crashes, one 🛡️ message suggests a temporary hedge of half its beta-weighted exposure,
+each stock against the index it follows most closely (highest R² of daily moves): chip-like names
+(e.g. NVDA, BE, AIPO, SOXX) against SOXX with **SOXS** (-3x, 5 sessions at most), the rest (GOOGL, TSLA,
+PLTR, BOTZ, IQQ) against QQQ with **PSQ** (-1x, up to 20 sessions). A leg opens when its own index is
+down at least 2.5x its usual daily move or 10% below its 20-day high, and below the bottom of its range,
+so a chip-only crash opens only the SOXS leg. Each leg gets its own 🛡️ HEDGE OFF message at the first
+of: a Rule A BUY on its index, the index back above the middle of its range, +5% from the start, or its
+time limit; a leg that times out is not reopened until that crash is over. Sized from the holdings
+secret, Telegram only; settings in `config.json` → `hedge`. It never trades.
 
 The full list is **not** sent automatically. Run the workflow with `digest` if you want it once.
 
