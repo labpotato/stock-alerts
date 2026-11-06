@@ -144,5 +144,24 @@
   ],
   "_not_equity_note": "Not judged against the stock market for unusual moves (their own move only).",
   "evening_messages": false,
-  "_evening_note": "false: the evening check still writes status.json's settled block for the post-close run, but sends no Telegram messages (Dongmin 2026-11-06)."
+  "_evening_note": "false: the evening check still writes status.json's settled block for the post-close run, but sends no Telegram messages (Dongmin 2026-11-06).",
+  "_hedge_note": "Rule H (Dongmin 2026-11-06): a temporary hedge when a group you are heavy in crashes. Trigger: group >= min_weight_pct of the book AND its proxy ETF down >= z x its usual daily move or >= dd20_pct below its 20-day high, and below its lower band. Size: ratio x beta-weighted exposure (-3x fund: a third). Exit: Rule A BUY on the proxy, back above the middle of its range, +rebound_pct, or max_sessions (max_sessions_3x for the 3x fund). Sized from the holdings secret, Telegram only.",
+  "hedge": {
+    "groups": [
+      {
+        "name": "AI group",
+        "members": "ai_group",
+        "proxy": "QQQ",
+        "inverse": "PSQ",
+        "inverse3": "SQQQ",
+        "min_weight_pct": 25,
+        "z": 2.5,
+        "dd20_pct": 10,
+        "ratio": 0.5,
+        "rebound_pct": 5,
+        "max_sessions": 20,
+        "max_sessions_3x": 5
+      }
+    ]
+  }
 }
