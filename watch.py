@@ -1604,8 +1604,11 @@ def hedge_messages(rows, state, sess):
                 off_today[f"{name}:{p}"] = today
                 if "session limit" in why:      # timed out mid-crash: no new leg until this crash ends
                     rec.setdefault("wait", {})[p] = True
+                first = leg["on"] == today and len(leg["days"]) == 1
                 out.append(f"🛡️ <b>HEDGE OFF — {esc(name)}: {leg['fund']}</b>\n{when_text()} · REAL-TIME\n\n"
-                           f"{esc(p)} {money(p, po['px'])}. <b>Sell the {leg['fund']} hedge</b>: {why}."
+                           f"{esc(p)} {money(p, po['px'])}. "
+                           + (f"<b>Ignore today's {leg['fund']} suggestion</b> (if you bought it, sell it): {why}."
+                              if first else f"<b>Sell the {leg['fund']} hedge</b>: {why}.")
                            + (f" The {', '.join(sorted(rec['legs'][q]['fund'] for q in rec['legs']))} hedge stays "
                               f"until its own exit." if rec["legs"] else "")
                            + "\n\n<i>Alert only. Nothing has been traded.</i>")
@@ -1614,6 +1617,8 @@ def hedge_messages(rows, state, sess):
         for p, L in legs.items():
             po = live_px.get(p)
             if po is None or p in rec["legs"] or off_today.get(f"{name}:{p}") == today:
+                continue
+            if "BUY" in (po["ev"]["k"], po["ev"]["r"]):        # your Rule A already says it is recovering
                 continue
             d = po["d"]
             hit, reason = HG.crash(po["px"], d["c"][-1], d.get("sigma"), (d.get("hist") or {}).get("c", [])[-20:],

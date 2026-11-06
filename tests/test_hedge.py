@@ -58,6 +58,9 @@ def test_crash_needs_a_big_fall_and_a_break_below_the_range():
     assert HG.crash(95, 100, 0.011, [100] * 20, 97, cfg)[0] is True
     assert HG.crash(95, 100, 0.011, [100] * 20, 94, cfg)[0] is False
     assert HG.crash(99, 100, 0.011, [100] * 20, 99.5, cfg)[0] is False
+    # 10 % under the 20-day high but UP today (SOXX, 6 Nov pre-market): a rebound, not a crash.
+    assert HG.crash(138.06, 131.9, 0.015, [160] * 20, 145.06, cfg)[0] is False
+    assert HG.crash(130.0, 131.9, 0.015, [160] * 20, 145.06, cfg)[0] is True
 
 
 def test_both_indexes_crash_one_message_with_a_soxs_leg_and_a_psq_leg(make_watch):
@@ -122,3 +125,14 @@ def test_no_hedge_when_the_group_is_small_or_holdings_are_missing(make_watch):
     w.H = None
     w.CFG["hedge"]["groups"][0]["min_weight_pct"] = 25
     assert w.hedge_messages(rows, {"sent": []}, "REGULAR") == []
+
+
+def test_no_leg_opens_while_rule_a_says_buy_and_a_same_day_exit_withdraws_it(make_watch):
+    w, rows = _setup(make_watch)
+    rows[1]["ev"]["r"] = "BUY"                                               # SOXX momentum back over 30
+    state = {"sent": []}
+    m = w.hedge_messages(rows, state, "REGULAR")[0]
+    assert "of PSQ" in m and "of SOXS" not in m
+    rows[0]["ev"]["r"] = "BUY"                                               # then QQQ recovers too, same day
+    off = w.hedge_messages(rows, state, "REGULAR")
+    assert len(off) == 1 and "Ignore today's PSQ suggestion" in off[0]
