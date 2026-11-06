@@ -70,7 +70,9 @@ def crash(px, prev_close, sigma, closes20, lower, cfg):
     z = move / sigma if sigma else 0
     hi = max(closes20) if closes20 else None
     dd = (px / hi - 1) if hi else 0
-    shock = z <= -cfg["z"] or dd <= -cfg["dd20_pct"] / 100
+    # A crash is a FALL in progress: a deep drawdown only counts on a down day (5 Nov fix: SOXX was
+    # 10 % under its 20-day high but up 4.7 % with momentum back over 30 when a hedge was suggested).
+    shock = z <= -cfg["z"] or (dd <= -cfg["dd20_pct"] / 100 and move < 0)
     if not (shock and px < lower):
         return False, ""
     bits = []
