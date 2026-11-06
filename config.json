@@ -142,5 +142,7 @@
     "GLDM",
     "SGOV"
   ],
-  "_not_equity_note": "Not judged against the stock market for unusual moves (their own move only)."
+  "_not_equity_note": "Not judged against the stock market for unusual moves (their own move only).",
+  "evening_messages": false,
+  "_evening_note": "false: the evening check still writes status.json's settled block for the post-close run, but sends no Telegram messages (Dongmin 2026-11-06)."
 }

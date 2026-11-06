@@ -107,3 +107,13 @@ def test_evening_check_waits_for_the_close(make_watch):
     w, m = make_watch(tickers=("QQQ",))
     m.now = et(2026, 11, 4, 15, 0)
     assert w.settled_pass({"sent": []}) == []
+
+
+def test_evening_check_writes_the_settled_block_but_sends_nothing(make_watch):
+    w, m = make_watch(tickers=("QQQ", "BOTZ"))
+    assert w.CFG["evening_messages"] is False
+    state = {"sent": [], "pending": {}, "obs": {}}
+    m.now = et(2026, 11, 4, 16, 30)
+    w.evening(state)
+    assert w.SENT == []
+    assert w.read_status()["settled"]["tickers"]["BOTZ"]["k_state"] == "BUY"

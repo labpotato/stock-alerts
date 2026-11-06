@@ -141,5 +141,5 @@ def gate_text(h, t, side, closes, usdsgd, ai_group, today, paused=None, never_ar
     """For REAL-TIME alerts: whether a matching close would fire an order, without sizing it."""
     line, fires = fires_line(h, t, side, closes, usdsgd, ai_group, today, paused, never_arm)
     if fires:
-        return f"would fire your {side} if it holds to the close; the evening check sizes it"
+        return f"would fire your {side} if it holds to the close; your post-close email sizes it"
     return line

@@ -37,6 +37,8 @@ short "Now STRONG" line (no second chart), and then nothing more for that ticker
 | Label | "REAL-TIME, pre-market / market open / after hours" | ✅ CONFIRMED at close · ⚠️ FADED by close · 🔔 CLOSE SIGNAL (not seen intraday) · ⚖️ CONFLICT at close |
 | Orders | says whether a matching close *would* fire your order | the only place an order is sized: "Fires: BUY 12 shares (≈$960), paid from cash" |
 
+**Since 2026-11-06 the evening check sends no Telegram messages** (`config.json` → `evening_messages: false`): it still runs and writes the settled block in `status.json` for the post-close run's cross-check.
+
 The evening check uses exactly the same data and rules as the Claude post-close run (see `SYNC.md`),
 so the two agree. It tells you whether each real-time alert held to the close, and it catches crosses
 the real-time readings missed. On 4 Nov, for example, QQQ crossed during the day and faded, and BOTZ
