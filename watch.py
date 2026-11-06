@@ -491,9 +491,37 @@ def fx_action(t, side):
     return frm, to
 
 
-def fx_do(t, side):
+SYM = {"USD": "US$", "SGD": "S$", "KRW": "₩"}
+
+
+def fx_amount(cur, x, whole=False):
+    sym = SYM.get(cur, cur + " ")
+    if cur == "KRW" or whole:
+        return f"{sym}{x:,.0f}"
+    return f"{sym}{x:,.4f}" if x < 10 else f"{sym}{x:,.2f}"
+
+
+def fx_buys(t, frm, to, pair_rate):
+    """What a round amount of `frm` buys in `to` at a pair rate (quote per 1 base)."""
+    per = pair_rate if FX[t]["base"] == frm else 1 / pair_rate
+    unit = 1_000_000 if frm == "KRW" else 1000         # amounts you would actually change
+    return unit, per * unit
+
+
+def fx_do(t, side, ev=None):
+    """Plain words: which currency is favoured to buy with which, and how good the rate is."""
     frm, to = fx_action(t, side)
-    return f"👉 <b>Change your {CURRENCY.get(frm, frm)} into {CURRENCY.get(to, to)}</b> ({frm} → {to})"
+    line = (f"👉 <b>Buying {CURRENCY.get(to, to)} with {CURRENCY.get(frm, frm)} is favoured now</b> "
+            f"({frm} → {to})")
+    if not ev or not ev.get("px") or not ev.get("up") or not ev.get("lo"):
+        return line
+    unit, now = fx_buys(t, frm, to, ev["px"])
+    _, usual = fx_buys(t, frm, to, (ev["up"] + ev["lo"]) / 2)
+    pct = (now / usual - 1) * 100
+    edge = (f"<b>{pct:.1f}% more</b> {to} than on a typical day" if pct >= 0.1
+            else "about the same as a typical day")
+    return (line + f"\n{fx_amount(frm, unit, whole=True)} buys <b>{fx_amount(to, now)}</b> now, versus about "
+                   f"{fx_amount(to, usual)} on a typical day (the middle of its normal range): {edge}.")
 
 
 CTX = {"closes": {}, "usdsgd": None, "paused": {}, "today": None}
@@ -504,8 +532,8 @@ def plan_text(t, side):
     say whether a matching close would fire; only the evening check sizes an order."""
     if is_fx(t):
         frm, to = fx_action(t, side)
-        return (f"<b>Change {frm} into {to}.</b> Right now your {CURRENCY.get(frm, frm)} buy more "
-                f"{CURRENCY.get(to, to)} than they usually do.")
+        return (f"<b>A good time to buy {CURRENCY.get(to, to)} with {CURRENCY.get(frm, frm)}.</b> "
+                f"Your {frm} gets more {to} than it usually does.")
     if H is None:
         return "Your holdings aren't loaded, so I can't say whether this triggers an order."
     if OR.shape(H) == "v2":
@@ -581,12 +609,14 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     dot = "🟢" if side == "BUY" else "🔴"
     combo = lambda l: side if l in said else "—"
     icons = "".join(dot if l in said else "⚪" for l in ("k", "r"))
-    lines = [f"{icons} <b>{verdict} — {label(t)}</b>",
+    title = (f"{'STRONG: ' if strong else ''}Buy {fx_action(t, side)[1]} with {fx_action(t, side)[0]}"
+             f" ({label(t)} {side})" if is_fx(t) else f"{verdict} — {label(t)}")
+    lines = [f"{icons} <b>{title}</b>",
              esc(full_name(t, o)),
              f"<b>{rate(t, ev['px'])}</b> · {when_text()} · REAL-TIME, {sess_text(t, sess)}",
              ""]
     if is_fx(t):
-        lines += [fx_do(t, side), ""]
+        lines += [fx_do(t, side, ev), ""]
     e = o.get("edge") or {}
     if any(e.get(f"knife_{l}") for l in legs):
         lines += [knife_line(e, legs), ""]
@@ -610,7 +640,7 @@ def signal_message(o, side, legs, earlier, sess, held=False):
               "<i>Alert only. Nothing has been traded.</i>"]
     note = {"SELL": "fell back inside its normal range" if "k" in legs else "momentum cooled below 70",
             "BUY": "recovered into its normal range" if "k" in legs else "momentum recovered above 30"}[side]
-    head = (f"{verdict}: change {fx_action(t, side)[0]} into {fx_action(t, side)[1]}" if is_fx(t)
+    head = (f"{verdict}: buy {fx_action(t, side)[1]} with {fx_action(t, side)[0]}" if is_fx(t)
             else f"{verdict} at {money(t, ev['px'])}")
     png = price_chart(t, full_name(t, o), o["d"], ev, head,
                       "#2e7d32" if side == "BUY" else "#c62828", note)
@@ -649,7 +679,7 @@ def mixed_message(o, sess):
              f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}", "",
              f"Price range <b>{kside}</b> + Momentum <b>{rside}</b>  →  <b>the two measures disagree</b>", "",
              why("k", kside, ref, ev), "", why("r", rside, ref, ev), "",
-             ("<b>What it means:</b> the two measures disagree, so <b>don't change money on this one</b>."
+             ("<b>What it means:</b> the two measures disagree, so <b>neither currency is favoured</b>; no need to change money."
               if is_fx(t) else "<b>Your plan:</b> your rules say a mixed signal triggers nothing."), "",
              "<i>Alert only. Nothing has been traded.</i>"]
     png = price_chart(t, full_name(t, o), o["d"], ev, "MIXED: measures disagree", "#ef6c00",
@@ -1448,6 +1478,14 @@ def decide(rows, alerts, state, sess):
                 print(f"{t} {side}: thin name in extended hours, waiting one more reading")
                 continue
             earlier = [l for l in ("k", "r") if l not in legs and done(t, side, l)]
+            if is_fx(t) and not earlier:
+                # SGD->KRW SELL and KRW->SGD BUY both mean "buy won with SGD": tell it once a day.
+                act = "fx:{}>{}".format(*fx_action(t, side))
+                if act in sent:
+                    for l in legs:
+                        sent.append(f"{t}:{side}:{l}")
+                    continue
+                sent.append(act)
             for l in legs:
                 sent.append(f"{t}:{side}:{l}")
             if earlier:     # the other measure already sent the full alert today: a short upgrade

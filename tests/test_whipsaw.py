@@ -70,3 +70,27 @@ def test_c_gold_is_not_judged_against_the_stock_market_and_mirror_pairs_alert_on
     keys = [x["key"] for x in w.anomalies(rows, rows[0])]
     assert "anom:move:GLDM" not in keys                  # +1.4 % on its own is ordinary for gold
     assert "anom:move:SGDKRW=X" in keys and "anom:move:KRWSGD=X" not in keys
+
+
+def _fx_row(t, side_leg, px, up, lo):
+    ev = {"k": "NONE", "r": "NONE", "px": px, "ma3": px, "up": up, "lo": lo, "rsi": 50.0, "t": t}
+    ev[side_leg[1]] = side_leg[0]
+    return {"t": t, "ev": ev, "ref": {"px": px, "ma3": px, "up": up, "lo": lo, "rsi": 71.0},
+            "d": {"c": [px, px, px]}, "edge": {}, "sess": "REGULAR"}
+
+
+def test_fx_message_says_which_currency_to_buy_with_which_and_mirror_pairs_send_once(make_watch):
+    fx = {"SGDKRW=X": {"base": "SGD", "quote": "KRW", "label": "SGD→KRW", "name": "SGD to KRW"},
+          "KRWSGD=X": {"base": "KRW", "quote": "SGD", "label": "KRW→SGD", "name": "KRW to SGD",
+                       "invert_of": "SGDKRW=X"}}
+    w, _ = make_watch(tickers=("QQQ",), fx=fx)
+    state = {"sent": [], "pending": {}, "obs": {}}
+    # SGD fell back from above its range: 1 SGD still buys more won than usual -> buy won with SGD.
+    a = _fx_row("SGDKRW=X", ("SELL", "r"), 1058.9, 1065.5, 1028.2)
+    b = _fx_row("KRWSGD=X", ("BUY", "r"), 1 / 1058.9, 1 / 1028.2, 1 / 1065.5)
+    msgs = w.decide([a, b], [], state, "REGULAR")
+    assert len(msgs) == 1, [m[0][:60] for m in msgs]
+    text = msgs[0][0]
+    assert "Buying Korean won with Singapore dollars is favoured now" in text
+    assert "S$1,000 buys <b>₩1,058,900</b> now, versus about ₩1,046,850" in text
+    assert "1.2% more</b> KRW" in text
