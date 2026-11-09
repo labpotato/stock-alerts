@@ -79,18 +79,27 @@ def _fx_row(t, side_leg, px, up, lo):
             "d": {"c": [px, px, px]}, "edge": {}, "sess": "REGULAR"}
 
 
-def test_fx_message_says_which_currency_to_buy_with_which_and_mirror_pairs_send_once(make_watch):
+def test_fx_message_is_direct_and_mirror_pairs_send_once(make_watch):
     fx = {"SGDKRW=X": {"base": "SGD", "quote": "KRW", "label": "SGD→KRW", "name": "SGD to KRW"},
           "KRWSGD=X": {"base": "KRW", "quote": "SGD", "label": "KRW→SGD", "name": "KRW to SGD",
                        "invert_of": "SGDKRW=X"}}
     w, _ = make_watch(tickers=("QQQ",), fx=fx)
     state = {"sent": [], "pending": {}, "obs": {}}
-    # SGD fell back from above its range: 1 SGD still buys more won than usual -> buy won with SGD.
     a = _fx_row("SGDKRW=X", ("SELL", "r"), 1058.9, 1065.5, 1028.2)
     b = _fx_row("KRWSGD=X", ("BUY", "r"), 1 / 1058.9, 1 / 1028.2, 1 / 1065.5)
     msgs = w.decide([a, b], [], state, "REGULAR")
-    assert len(msgs) == 1, [m[0][:60] for m in msgs]
+    assert len(msgs) == 1
     text = msgs[0][0]
-    assert "Buying Korean won with Singapore dollars is favoured now" in text
-    assert "S$1,000 buys <b>₩1,058,900</b> now, versus about ₩1,046,850" in text
-    assert "1.2% more</b> KRW" in text
+    assert text.startswith("💱 <b>Favourable to buy Korean won with Singapore dollars</b>")
+    assert "S$1,000 buys <b>₩1,058,900</b> now, 1.2% more than on a typical day." in text
+    assert "Momentum" not in text and "Price range" not in text and "score" not in text
+    assert len(text) < 400
+
+
+def test_fx_unusual_move_is_direct(make_watch):
+    fx = {"SGDKRW=X": {"base": "SGD", "quote": "KRW", "label": "SGD→KRW", "name": "SGD to KRW"}}
+    w, _ = make_watch(tickers=("QQQ",), fx=fx)
+    o = {"t": "SGDKRW=X", "px": 1058.9, "d": {"c": [1048.8, 1048.8, 1048.8]}, "ev": {}}
+    text, png = w.anomaly_message({"ticker": "SGDKRW=X", "kind": "move", "title": "x"}, [o], "REGULAR")
+    assert text.startswith("💱 <b>Big move: the Korean won fell against the Singapore dollar</b>")
+    assert "S$1,000 buys <b>₩1,058,900</b> now, versus ₩1,048,800 at the last close (+1.0%)" in text

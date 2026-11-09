@@ -637,8 +637,38 @@ def why(leg, side, ref, ev):
             f"to {ev['rsi']:.0f}. Climbing back over 30 is your buy signal.")
 
 
+def fx_reason(t, side):
+    """One plain sentence on why, without the measures' names."""
+    one = lambda c: (lambda n: n[:-1] if n.endswith("dollars") else n)(CURRENCY.get(c, c))
+    b, q = one(FX[t]["base"]), one(FX[t]["quote"])
+    if side == "SELL":
+        return f"The {b} has been unusually strong against the {q} and is starting to fall back."
+    return f"The {b} has been unusually weak against the {q} and is starting to recover."
+
+
+def fx_signal_message(o, side, legs, earlier, sess):
+    """Currency alerts, direct (Dongmin 2026-11-09): which money to change into which, and how good it is."""
+    t, ev = o["t"], o["ev"]
+    frm, to = fx_action(t, side)
+    strong = (set(legs) | set(earlier)) == {"k", "r"}
+    unit, now = fx_buys(t, frm, to, ev["px"])
+    _, usual = fx_buys(t, frm, to, (ev["up"] + ev["lo"]) / 2)
+    pct = (now / usual - 1) * 100
+    lines = [f"💱 <b>{'Strongly favourable' if strong else 'Favourable'} to buy {CURRENCY.get(to, to)} "
+             f"with {CURRENCY.get(frm, frm)}</b>",
+             f"{fx_amount(frm, unit, whole=True)} buys <b>{fx_amount(to, now)}</b> now"
+             + (f", {pct:.1f}% more than on a typical day." if pct >= 0.1 else ", about a typical day's rate."),
+             "", fx_reason(t, side) + (" Both measures agree." if strong else ""),
+             "", f"<i>{when_text()} · REAL-TIME · alert only, nothing has been traded.</i>"]
+    png = price_chart(t, full_name(t, o), o["d"], ev, f"Buy {to} with {frm}",
+                      "#2e7d32" if side == "BUY" else "#c62828", f"{to} favoured")
+    return "\n".join(lines), png
+
+
 def signal_message(o, side, legs, earlier, sess, held=False):
     """One message for one ticker: verdict from the two measures, reasons, plan, chart."""
+    if is_fx(o["t"]):
+        return fx_signal_message(o, side, legs, earlier, sess)
     t, ev, ref = o["t"], o["ev"], o["ref"]
     said = set(legs) | set(earlier)
     strong = said == {"k", "r"}
@@ -687,6 +717,12 @@ def signal_message(o, side, legs, earlier, sess, held=False):
 def upgrade_message(o, side, legs, earlier, sess):
     """The second measure agrees later the same day: one short line, no second full alert."""
     t, ev = o["t"], o["ev"]
+    if is_fx(t):
+        frm, to = fx_action(t, side)
+        unit, now = fx_buys(t, frm, to, ev["px"])
+        return (f"💱 <b>Now strongly favourable to buy {CURRENCY.get(to, to)} with {CURRENCY.get(frm, frm)}</b>\n"
+                f"{fx_amount(frm, unit, whole=True)} buys <b>{fx_amount(to, now)}</b> now. Both measures agree.\n\n"
+                f"<i>{when_text()} · REAL-TIME · alert only.</i>")
     dot = "🟢" if side == "BUY" else "🔴"
     new, old = LEG[legs[0]], LEG[earlier[0]]
     lines = [f"{dot}{dot} <b>Now STRONG {side} — {label(t)}</b>",
@@ -711,6 +747,11 @@ def knife_line(e, legs):
 
 def mixed_message(o, sess):
     t, ev, ref = o["t"], o["ev"], o["ref"]
+    if is_fx(t):
+        b, q = FX[t]["base"], FX[t]["quote"]
+        return (f"💱 <b>No clear direction between {CURRENCY.get(b, b)} and {CURRENCY.get(q, q)}</b>\n"
+                f"The two measures disagree, so neither is favoured. No need to change money.\n\n"
+                f"<i>{when_text()} · REAL-TIME · alert only.</i>"), None
     kside, rside = ev["k"], ev["r"]
     lines = [f"⚠️ <b>MIXED — {label(t)}</b>", esc(full_name(t, o)),
              f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}", "",
@@ -888,8 +929,27 @@ def anomalies(rows, bench):
     return out
 
 
+def fx_move_message(a, o):
+    """Unusual currency move, direct: which way and what S$1,000 (etc.) buys now versus yesterday."""
+    t, px = o["t"], o["px"]
+    b, q = FX[t]["base"], FX[t]["quote"]
+    prev = o["d"]["c"][-1]
+    unit, now = fx_buys(t, b, q, px)
+    _, before = fx_buys(t, b, q, prev)
+    up = px > prev
+    strong, weak = (b, q) if up else (q, b)
+    sw = CURRENCY.get(strong, strong); ww = CURRENCY.get(weak, weak)
+    return (f"💱 <b>Big move: the {ww.rstrip('s') if ww.endswith('dollars') else ww} fell against the "
+            f"{sw.rstrip('s') if sw.endswith('dollars') else sw}</b>\n"
+            f"{fx_amount(b, unit, whole=True)} buys <b>{fx_amount(q, now)}</b> now, versus "
+            f"{fx_amount(q, before)} at the last close ({(now / before - 1) * 100:+.1f}%). An unusually big move "
+            f"for this pair.\n\n<i>{when_text()} · a heads-up, not a signal on its own.</i>")
+
+
 def anomaly_message(a, rows, sess):
     head = f"⚠️ <b>{esc(a['title'])}</b>"
+    if a["ticker"] and is_fx(a["ticker"]) and a.get("kind") == "move":
+        return fx_move_message(a, next(x for x in rows if x["t"] == a["ticker"])), None
     if a["ticker"]:
         o = next(x for x in rows if x["t"] == a["ticker"])
         body = [head, esc(full_name(a["ticker"], o)), f"{when_text()} · {sess_text(a['ticker'], o.get('sess', sess))}",
