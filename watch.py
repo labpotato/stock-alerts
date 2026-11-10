@@ -654,15 +654,23 @@ def fx_signal_message(o, side, legs, earlier, sess):
     unit, now = fx_buys(t, frm, to, ev["px"])
     _, usual = fx_buys(t, frm, to, (ev["up"] + ev["lo"]) / 2)
     pct = (now / usual - 1) * 100
-    lines = [f"💱 <b>{'Strongly favourable' if strong else 'Favourable'} to buy {CURRENCY.get(to, to)} "
-             f"with {CURRENCY.get(frm, frm)}</b>",
+    lines = [f"💱 <b>I would {'definitely ' if strong else ''}buy {CURRENCY.get(to, to)} "
+             f"with {CURRENCY.get(frm, frm)} now</b>",
              f"{fx_amount(frm, unit, whole=True)} buys <b>{fx_amount(to, now)}</b> now"
              + (f", {pct:.1f}% more than on a typical day." if pct >= 0.1 else ", about a typical day's rate."),
              "", fx_reason(t, side) + (" Both measures agree." if strong else ""),
              "", f"<i>{when_text()} · REAL-TIME · alert only, nothing has been traded.</i>"]
-    png = price_chart(t, full_name(t, o), o["d"], ev, f"Buy {to} with {frm}",
-                      "#2e7d32" if side == "BUY" else "#c62828", f"{to} favoured")
-    return "\n".join(lines), png
+    return "\n".join(lines), fx_chart(o, side)
+
+
+def fx_chart(o, side=None):
+    """The exchange-rate chart that goes with every currency message."""
+    t, ev = o["t"], o["ev"]
+    if side:
+        frm, to = fx_action(t, side)
+        return price_chart(t, full_name(t, o), o["d"], ev, f"I would buy {to} with {frm}",
+                           "#2e7d32" if side == "BUY" else "#c62828", f"{to} favoured")
+    return price_chart(t, full_name(t, o), o["d"], ev, "Big move", "#ef6c00", "unusual move today")
 
 
 def signal_message(o, side, legs, earlier, sess, held=False):
@@ -720,7 +728,7 @@ def upgrade_message(o, side, legs, earlier, sess):
     if is_fx(t):
         frm, to = fx_action(t, side)
         unit, now = fx_buys(t, frm, to, ev["px"])
-        return (f"💱 <b>Now strongly favourable to buy {CURRENCY.get(to, to)} with {CURRENCY.get(frm, frm)}</b>\n"
+        return (f"💱 <b>Now I would definitely buy {CURRENCY.get(to, to)} with {CURRENCY.get(frm, frm)}</b>\n"
                 f"{fx_amount(frm, unit, whole=True)} buys <b>{fx_amount(to, now)}</b> now. Both measures agree.\n\n"
                 f"<i>{when_text()} · REAL-TIME · alert only.</i>")
     dot = "🟢" if side == "BUY" else "🔴"
@@ -943,13 +951,15 @@ def fx_move_message(a, o):
             f"{sw.rstrip('s') if sw.endswith('dollars') else sw}</b>\n"
             f"{fx_amount(b, unit, whole=True)} buys <b>{fx_amount(q, now)}</b> now, versus "
             f"{fx_amount(q, before)} at the last close ({(now / before - 1) * 100:+.1f}%). An unusually big move "
-            f"for this pair.\n\n<i>{when_text()} · a heads-up, not a signal on its own.</i>")
+            f"for this pair.\n\n<b>I would wait:</b> your rule has not given a signal yet. I'll tell you the "
+            f"moment it says to change money.\n\n<i>{when_text()} · a heads-up, not a signal.</i>")
 
 
 def anomaly_message(a, rows, sess):
     head = f"⚠️ <b>{esc(a['title'])}</b>"
     if a["ticker"] and is_fx(a["ticker"]) and a.get("kind") == "move":
-        return fx_move_message(a, next(x for x in rows if x["t"] == a["ticker"])), None
+        o = next(x for x in rows if x["t"] == a["ticker"])
+        return fx_move_message(a, o), (fx_chart(o) if o.get("ev", {}).get("up") else None)
     if a["ticker"]:
         o = next(x for x in rows if x["t"] == a["ticker"])
         body = [head, esc(full_name(a["ticker"], o)), f"{when_text()} · {sess_text(a['ticker'], o.get('sess', sess))}",
@@ -1586,7 +1596,8 @@ def decide(rows, alerts, state, sess):
             for l in legs:
                 sent.append(f"{t}:{side}:{l}")
             if earlier:     # the other measure already sent the full alert today: a short upgrade
-                out.append((upgrade_message(o, side, legs, earlier, o.get("sess", sess)), None))
+                out.append((upgrade_message(o, side, legs, earlier, o.get("sess", sess)),
+                            fx_chart(o, side) if is_fx(t) else None))
             else:
                 out.append(signal_message(o, side, legs, earlier, o.get("sess", sess)))
 
