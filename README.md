@@ -68,7 +68,8 @@ says about the ticker. Each headline is handled once (memory in a Workers KV nam
 workflow creates). At most 40 headlines a day go to Claude (`NEWS_MAX_PER_DAY`), which caps the cost;
 `NEWS_MODEL` picks the model and `NEWS = "off"` in `wrangler.toml` turns the feature off.
 
-Seeking Alpha and Investopedia headlines are read too; flashes from these (and from Motley Fool,
+Google News refuses requests from Cloudflare Workers (HTTP 503), so every Google search has a Bing
+News twin; whichever answers is used. Seeking Alpha and Investopedia headlines are read too; flashes from these (and from Motley Fool,
 Zacks, Benzinga) are marked "(less reliable source)".
 
 ## Market mood (2026-11-10)
