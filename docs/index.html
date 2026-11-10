@@ -118,15 +118,18 @@ async function board() {
   $("alerts").innerHTML = al.length ? "<ul>" + al.map((x) => `<li>${x}</li>`).join("") + "</ul>" : "No buy or sell signal yet today.";
   $("anom").innerHTML = (b.anomalies || []).length ? "<ul>" + b.anomalies.map((x) => `<li>${esc(x)}</li>`).join("") + "</ul>" : "Nothing unusual right now.";
 }
+// One affected name: "NVDA ▼" (bad), "AMD ▲" (good), "AI ◆" (mixed). Older flashes are plain strings.
+const hit = (h) => typeof h === "string" ? esc(h)
+  : `<span title="${esc((h.effect || "") + (h.why ? ": " + h.why : ""))}" style="color:${{ good: "var(--up)", bad: "var(--down)" }[h.effect] || "inherit"}">${esc(h.name)} ${{ good: "▲", bad: "▼", mixed: "◆" }[h.effect] || ""}</span>`;
 async function news() {
   try {
     const n = await (await fetch(WORKER + "/news")).json();
     $("news").innerHTML = n.length ? n.slice(0, 12).map((x) => `<div class="news">
-      <div class="meta">${x.importance >= 5 ? "🚨" : x.importance === 4 ? "⚡" : "📰"} ${esc((x.tickers || []).join(" · ") || "MARKET")} · ${esc(x.source)} · ${ago(new Date(x.ts).toISOString())}</div>
+      <div class="meta">${x.importance >= 5 ? "🚨" : x.importance === 4 ? "⚡" : "📰"} ${(x.tickers || []).map(hit).join(" · ") || "MARKET"} · ${esc(x.source)} · ${ago(new Date(x.ts).toISOString())}</div>
       <div class="t"><a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a></div>
       <div class="k">${{ up: "▲", down: "▼", unclear: "•" }[x.lean] || "•"} ${esc(x.take)}</div>
       ${x.opinion ? `<div class="k">💬 ${esc(x.opinion)}</div>` : ""}
-      ${(x.secondary || []).length || (x.sectors || []).length ? `<div class="meta">${(x.secondary || []).length ? "also: " + esc(x.secondary.join(", ")) : ""}${(x.secondary || []).length && (x.sectors || []).length ? " · " : ""}${(x.sectors || []).length ? "sectors: " + esc(x.sectors.join(", ")) : ""}</div>` : ""}</div>`).join("") : "No flash yet. They also arrive in Telegram.";
+      ${(x.secondary || []).length || (x.sectors || []).length ? `<div class="meta">${(x.secondary || []).length ? "also: " + x.secondary.map(hit).join(", ") : ""}${(x.secondary || []).length && (x.sectors || []).length ? " · " : ""}${(x.sectors || []).length ? "sectors: " + x.sectors.map(hit).join(", ") : ""}</div>` : ""}</div>`).join("") : "No flash yet. They also arrive in Telegram.";
   } catch { $("news").textContent = "News panel unavailable right now; flashes still arrive in Telegram."; }
 }
 async function backtest() {
