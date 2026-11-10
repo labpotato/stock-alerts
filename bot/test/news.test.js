@@ -93,6 +93,9 @@ test("the first run only learns what is already out; later runs send new, import
   assert.equal(h2.tg[0].chat_id, "111");
   assert.match(h2.tg[0].text, /^⚡ <b>TSLA<\/b> · CNBC/);
   assert.deepEqual(h2.calls[0].betas, ["server-side-fallback-2026-07-01"]);
+  const recent = JSON.parse(h2.store.news).recent;
+  assert.equal(recent.length, 1);
+  assert.equal(recent[0].title, "Tesla recall hits 1 million cars");
   r = await runNews(ENV, { ...h2.deps });                         // same feed again: nothing new
   assert.equal(h2.tg.length, 1);
 });

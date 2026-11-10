@@ -1,89 +1,156 @@
 <!doctype html>
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stock Alerts</title>
+<title>Stock Alerts Terminal</title>
 <style>
-:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--line:#e5e7eb;--hd:#3c4043;--buy:#0f7b3f;--sell:#b3261e;--wb:#1a73e8;--ws:#b26a00;--card:#fafafa}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#15171a;--fg:#e8e8e8;--mut:#9aa0a6;--line:#2c3034;--hd:#23262b;--buy:#4ade80;--sell:#f87171;--wb:#7cb3ff;--ws:#e0a33e;--card:#1b1e22}}
-:root[data-theme=dark]{--bg:#15171a;--fg:#e8e8e8;--mut:#9aa0a6;--line:#2c3034;--hd:#23262b;--buy:#4ade80;--sell:#f87171;--wb:#7cb3ff;--ws:#e0a33e;--card:#1b1e22}
+:root{--bg:#0b0d10;--panel:#12151a;--line:#232830;--ink:#e9e7df;--ink2:#b9b6aa;--mut:#7f8690;--amber:#f5a623;
+  --up:#3ecf8e;--down:#ff6b6b;--blue:#3987e5;--band:#1c2733;--warn:#f5a623}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
-.wrap{max-width:860px;margin:0 auto;padding:20px 16px 56px}
-h1{font-size:20px;margin:0 0 2px}
-.sub{color:var(--mut);font-size:13px;margin-bottom:18px}
-.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;background:var(--card);border:1px solid var(--line)}
-.pill.open{color:var(--buy);border-color:var(--buy)}
-.pill.ext{color:var(--ws);border-color:var(--ws)}
-h2{font-size:14px;letter-spacing:.04em;text-transform:uppercase;margin:26px 0 8px;color:var(--mut)}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{background:var(--hd);color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:.05em;text-align:right;padding:7px 8px}
-th:first-child{text-align:left}
-td{padding:8px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
-td:first-child{text-align:left;font-weight:600}
-.tk{color:var(--mut);font-weight:400;font-size:12px}
-.up{color:var(--buy)}.dn{color:var(--sell)}
-.b-BUY{color:var(--buy)}.b-SELL{color:var(--sell)}
-.b-WATCHBUY{color:var(--wb)}.b-WATCHSELL{color:var(--ws)}
-.note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--ws);padding:10px 12px;border-radius:6px;font-size:13px;margin:14px 0}
-.foot{color:var(--mut);font-size:12px;margin-top:30px;border-top:1px solid var(--line);padding-top:12px}
-.quiet{color:var(--mut);font-size:13px}
-@media(max-width:520px){th,td{padding:6px 5px;font-size:13px}.hide-s{display:none}}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{margin:0;font-size:15px;color:var(--amber);letter-spacing:.06em}
+h2{margin:0 0 10px;font-size:12px;color:var(--amber);letter-spacing:.08em;font-weight:600}
+.meta{color:var(--mut);font-size:12px}
+.pill{display:inline-block;padding:1px 8px;border:1px solid var(--line);border-radius:10px;font-size:11px;color:var(--ink2)}
+main{padding:14px 16px 40px;display:grid;gap:14px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:1100px){main{grid-template-columns:minmax(0,2.1fr) minmax(0,1fr)}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(232px,1fr))}
+.card{border:1px solid var(--line);border-radius:5px;padding:9px 10px;background:#0e1115;min-width:0}
+.card.sig{border-color:var(--amber)}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.tk{font-weight:700;font-size:15px}.nm{color:var(--mut);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.px{font-size:15px}.chg{font-size:12px;white-space:nowrap;flex:none}.nm{min-width:0}.upc{color:var(--up)}.dnc{color:var(--down)}
+.chip{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:3px;border:1px solid var(--line);color:var(--ink2);margin:6px 4px 0 0}
+.chip.buy{border-color:var(--up);color:var(--up)}.chip.sell{border-color:var(--down);color:var(--down)}.chip.watch{border-color:var(--blue);color:#8fb8f0}
+svg{display:block;width:100%;height:46px;margin-top:6px;overflow:visible}
+.gauge{position:relative;height:6px;background:var(--line);border-radius:3px;margin-top:8px}
+.gauge i{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink)}
+.gauge b{position:absolute;top:0;height:6px;width:1px;background:var(--mut)}
+.small{font-size:11px;color:var(--mut);margin-top:4px}
+.news{border-bottom:1px solid var(--line);padding:8px 0}.news:last-child{border:0}
+.news a{color:var(--ink);text-decoration:none}.news a:hover{text-decoration:underline}
+.news .t{font-weight:600}.news .k{color:var(--ink2);margin-top:2px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{padding:4px 6px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:500}
+.scroll{overflow-x:auto}
+.big{font-size:22px;color:var(--ink)}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
+.kpi{border:1px solid var(--line);border-radius:5px;padding:8px 10px}.kpi span{display:block;color:var(--mut);font-size:11px}
+#tip{position:fixed;pointer-events:none;background:#000;border:1px solid var(--line);padding:3px 7px;font-size:11px;border-radius:4px;display:none;z-index:9}
+ul{margin:0;padding-left:18px}li{margin:3px 0}
+.stale{color:var(--warn)}
 </style>
-<div class="wrap">
-  <h1>Stock Alerts</h1>
-  <div class="sub" id="sub">loading…</div>
-  <div id="warn"></div>
-  <div id="body"></div>
-  <div class="note">Real-time states, including pre-market and after-hours. A signal is a cross between
-  two consecutive readings about 10 minutes apart. Nothing here is an instruction and nothing is traded.
-  Share counts and order sizes are deliberately not published on this page.</div>
-  <div class="foot">Machine-readable feed: <a href="status.json">status.json</a>.
-  Rebuilt by a GitHub Actions job while US markets are open, including pre- and post-market.</div>
-</div>
+<header>
+  <h1>STOCK ALERTS TERMINAL</h1>
+  <span class="pill" id="sess">…</span>
+  <span class="meta" id="age">loading…</span>
+  <span class="meta">refreshes every 60 s · prices can lag by up to 10 minutes · nothing here trades</span>
+</header>
+<main>
+  <div style="display:grid;gap:14px;min-width:0">
+    <section><h2>WATCHLIST · LIVE READING AND YOUR RULE</h2><div class="grid" id="stocks"></div></section>
+    <section><h2>CURRENCIES</h2><div class="grid" id="fx"></div></section>
+    <section><h2>DOES THE RULE BEAT THE MARKET? · BACKTEST</h2><div id="bt">loading…</div></section>
+  </div>
+  <div style="display:grid;gap:14px;align-content:start;min-width:0">
+    <section><h2>NEWS FLASHES</h2><div id="news" class="meta">loading…</div></section>
+    <section><h2>TODAY'S ALERTS</h2><div id="alerts" class="meta">loading…</div></section>
+    <section><h2>UNUSUAL MOVES</h2><div id="anom" class="meta">loading…</div></section>
+  </div>
+</main>
+<div id="tip"></div>
 <script>
-const ORDER=["BUY","SELL","WATCH SELL","WATCH BUY"];
-const cls=s=>"b-"+s.replace(/ /g,"");
-const pc=v=>(v>0?"+":"")+v.toFixed(2)+"%";
-const fx=(v,kind)=>{if(kind!=="currency")return v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-  const a=Math.abs(v); return a>=100?v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
-  :(a>=1?v.toFixed(4):v.toFixed(6));};
-fetch("status.json?"+Date.now()).then(r=>r.json()).then(d=>{
-  const s=d.session||"?";
-  const lab={PRE:"pre-market",REGULAR:"market open",POST:"after hours",CLOSED:"market closed"}[s]||s;
-  const k=s==="REGULAR"?"open":(s==="CLOSED"?"":"ext");
-  document.getElementById("sub").innerHTML=
-    `<span class="pill ${k}">${lab}</span> &nbsp; built ${d.generated_utc} UTC &nbsp;·&nbsp; `+
-    `last settled close ${d.settled_close_date||"—"}`;
-  if((d.anomalies||[]).length)
-    document.getElementById("warn").innerHTML=
-      `<div class="note"><b>Unusual movement</b><br>`+d.anomalies.map(a=>"• "+a).join("<br>")+`</div>`;
-  const ts=d.tickers||{}, buck={};
-  for(const [t,v] of Object.entries(ts)){
-    let b="QUIET";
-    for(const o of ORDER) if(v.keltner===o||v.momentum===o){b=o;break}
-    (buck[b]=buck[b]||[]).push([t,v]);
-  }
-  let h="";
-  for(const name of ORDER){
-    const rows=buck[name]; if(!rows) continue;
-    rows.sort((a,b)=>Math.abs(a[1].nearest_trigger_pct??999)-Math.abs(b[1].nearest_trigger_pct??999));
-    h+=`<h2 class="${cls(name)}">${name} — ${rows.length}</h2><table><tr>`+
-       `<th>Ticker</th><th>Price</th><th>Day</th><th>RSI</th><th>To trigger</th>`+
-       `<th class="hide-s">Lower</th><th class="hide-s">Upper</th></tr>`;
-    for(const [t,v] of rows){
-      const n=v.nearest_trigger_pct;
-      h+=`<tr><td>${v.label||t}<br><span class="tk">${v.keltner} / ${v.momentum}</span></td>`+
-         `<td>${fx(v.price,v.kind)}</td>`+
-         `<td class="${v.day_pct>=0?"up":"dn"}">${pc(v.day_pct)}</td><td>${v.rsi.toFixed(0)}</td>`+
-         `<td>${n===null||n===undefined?"—":pc(n)}</td>`+
-         `<td class="hide-s">${fx(v.lower,v.kind)}</td><td class="hide-s">${fx(v.upper,v.kind)}</td></tr>`;
-    }
-    h+="</table>";
-  }
-  if(buck.QUIET) h+=`<h2>Quiet — ${buck.QUIET.length}</h2><div class="quiet">`+
-      buck.QUIET.map(x=>x[1].label||x[0]).sort().join(", ")+`</div>`;
-  if((d.errors||[]).length) h+=`<h2>Not priced</h2><div class="quiet">`+
-      d.errors.map(e=>e.replace(/</g,"&lt;")).join("<br>")+`</div>`;
-  document.getElementById("body").innerHTML=h;
-}).catch(e=>{document.getElementById("sub").textContent="could not load status.json: "+e});
+const WORKER = "https://stock-alerts-bot.bdongmin10.workers.dev";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const num = (x, t) => x == null ? "–" : (t && /KRW/.test(t) && x > 100 ? x.toLocaleString("en-US", { maximumFractionDigits: 1 })
+  : x < 0.01 ? x.toPrecision(4) : x < 10 ? x.toFixed(4).replace(/0+$/, "").replace(/\.$/, "") : x.toLocaleString("en-US", { maximumFractionDigits: 2 }));
+const ago = (iso) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 2880 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; };
+const STATE = { BUY: ["buy", "BUY signal"], SELL: ["sell", "SELL signal"], "WATCH BUY": ["watch", "below range"], "WATCH SELL": ["watch", "above range"], NONE: ["", "in range"] };
+const MOM = { BUY: ["buy", "BUY signal"], SELL: ["sell", "SELL signal"], "WATCH BUY": ["watch", "sold off"], "WATCH SELL": ["watch", "overheated"], NONE: ["", "normal"] };
+
+function spark(v, t) {
+  const h = v.hist || {}, c = (h.c || []).concat([v.price]), lo = (h.lo || []).concat([v.lower]), up = (h.up || []).concat([v.upper]);
+  const d = (h.d || []).concat(["now"]);
+  if (c.length < 5) return "";
+  const all = c.concat(lo, up).filter((x) => x != null), mn = Math.min(...all), mx = Math.max(...all), W = 220, H = 46;
+  const X = (i) => (i / (c.length - 1)) * W, Y = (y) => H - 2 - ((y - mn) / (mx - mn || 1)) * (H - 4);
+  const line = (a) => a.map((y, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(y).toFixed(1)).join("");
+  const band = line(up) + lo.map((y, i) => "L" + X(lo.length - 1 - i).toFixed(1) + " " + Y(lo[lo.length - 1 - i]).toFixed(1)).join("") + "Z";
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-t="${esc(t)}" data-c='${JSON.stringify(c)}' data-d='${JSON.stringify(d)}'>
+    <path d="${band}" fill="var(--band)"/><path d="${line(c)}" fill="none" stroke="var(--blue)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <circle cx="${X(c.length - 1)}" cy="${Y(v.price)}" r="2.6" fill="var(--ink)"/></svg>`;
+}
+function card(t, v) {
+  const up = v.day_pct >= 0, k = STATE[v.keltner] || ["", v.keltner], m = MOM[v.momentum] || ["", v.momentum];
+  const sig = ["BUY", "SELL"].includes(v.keltner) || ["BUY", "SELL"].includes(v.momentum);
+  const old = Date.now() - Date.parse(v.as_of) > 30 * 60000;
+  const near = v.nearest_trigger_pct == null ? "" : `next signal ${v.nearest_trigger_pct > 0 ? "+" : ""}${v.nearest_trigger_pct}% away`;
+  return `<div class="card${sig ? " sig" : ""}">
+    <div class="row"><span class="tk">${esc(v.label || t)}</span><span class="px">${num(v.price, v.label)}</span></div>
+    <div class="row"><span class="nm" title="${esc(v.name)}">${esc(v.name || "")}</span>
+      <span class="chg ${up ? "upc" : "dnc"}">${up ? "▲" : "▼"} ${Math.abs(v.day_pct).toFixed(2)}%</span></div>
+    ${spark(v, v.label || t)}
+    <div class="gauge" title="Momentum (RSI) ${v.rsi}: under 30 is sold off, over 70 is overheated"><b style="left:30%"></b><b style="left:70%"></b><i style="left:${Math.max(0, Math.min(100, v.rsi))}%"></i></div>
+    <span class="chip ${k[0]}">range: ${k[1]}</span><span class="chip ${m[0]}">momentum ${Math.round(v.rsi)}: ${m[1]}</span>
+    <div class="small">${near}${near ? " · " : ""}<span class="${old ? "stale" : ""}">${old ? "⚠ " : ""}read ${ago(v.as_of)}</span></div></div>`;
+}
+const LEG = { k: "price range", r: "momentum" };
+function alertLine(key) {
+  const [t, side, leg] = key.split(":");
+  if (key.startsWith("anom:") || key.startsWith("fx:")) return null;
+  if (side === "SPLITHOLD") return `${esc(t)}: held, looks like an unconfirmed split`;
+  if (side === "MIXED") return `${esc(t)}: the two measures disagree`;
+  return `<b class="${side === "BUY" ? "upc" : "dnc"}">${side === "BUY" ? "▲ BUY" : "▼ SELL"}</b> ${esc(t.replace("=X", ""))} (${LEG[leg] || leg})`;
+}
+async function board() {
+  const b = await (await fetch("board.json?" + Date.now())).json();
+  $("sess").textContent = "US market: " + ({ REGULAR: "open", PRE: "pre-market", POST: "after hours", CLOSED: "closed" }[b.session] || b.session);
+  const stale = Date.now() - Date.parse(b.generated_utc) > 25 * 60000;
+  $("age").innerHTML = `<span class="${stale ? "stale" : ""}">${stale ? "⚠ " : ""}last reading ${ago(b.generated_utc)}</span>`;
+  const e = Object.entries(b.tickers), ai = new Set(b.ai_group || []);
+  const order = (a, c) => (ai.has(c[0]) - ai.has(a[0])) || Math.abs(c[1].day_pct) - Math.abs(a[1].day_pct);
+  $("stocks").innerHTML = e.filter(([, v]) => v.kind !== "currency").sort(order).map(([t, v]) => card(t, v)).join("");
+  $("fx").innerHTML = e.filter(([, v]) => v.kind === "currency").map(([t, v]) => card(t, v)).join("");
+  const al = (b.alerts_today || []).map(alertLine).filter(Boolean);
+  $("alerts").innerHTML = al.length ? "<ul>" + al.map((x) => `<li>${x}</li>`).join("") + "</ul>" : "No buy or sell signal yet today.";
+  $("anom").innerHTML = (b.anomalies || []).length ? "<ul>" + b.anomalies.map((x) => `<li>${esc(x)}</li>`).join("") + "</ul>" : "Nothing unusual right now.";
+}
+async function news() {
+  try {
+    const n = await (await fetch(WORKER + "/news")).json();
+    $("news").innerHTML = n.length ? n.slice(0, 12).map((x) => `<div class="news">
+      <div class="meta">${x.importance >= 5 ? "🚨" : x.importance === 4 ? "⚡" : "📰"} ${esc((x.tickers || []).join(" · ") || "MARKET")} · ${esc(x.source)} · ${ago(new Date(x.ts).toISOString())}</div>
+      <div class="t"><a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a></div>
+      <div class="k">${{ up: "▲", down: "▼", unclear: "•" }[x.lean] || "•"} ${esc(x.take)}</div></div>`).join("") : "No flash yet. They also arrive in Telegram.";
+  } catch { $("news").textContent = "News panel unavailable right now; flashes still arrive in Telegram."; }
+}
+async function backtest() {
+  const r = await (await fetch("backtest.json")).json(), p = r.portfolio, io = Object.entries(r.in_out);
+  const wins = io.filter(([, v]) => v.rule.cagr_pct > v.hold.cagr_pct).length, ev = r.events;
+  const row = (t, v) => `<tr><td>${t}</td><td>${v.hold.cagr_pct.toFixed(1)}%</td><td>${v.rule.cagr_pct.toFixed(1)}%</td><td>${v.hold.max_dd_pct}%</td><td>${v.rule.max_dd_pct}%</td><td>${v.rule.in_market_pct}%</td></tr>`;
+  $("bt").innerHTML = `<div class="kpis">
+    <div class="kpi"><span>Timing each ticker with the rule beat holding it</span><div class="big">${wins} of ${io.length}</div></div>
+    <div class="kpi"><span>Signal-gated rebalancing, per year</span><div class="big">${p.gated.cagr_pct}%</div></div>
+    <div class="kpi"><span>Plain monthly rebalancing, per year</span><div class="big">${p.monthly.cagr_pct}%</div></div>
+    <div class="kpi"><span>VOO · QQQ, per year</span><div class="big">${p.VOO.cagr_pct}% · ${p.QQQ.cagr_pct}%</div></div>
+    <div class="kpi"><span>Return 60 sessions after a momentum BUY, vs average</span><div class="big">+${ev["BUY momentum (RSI)"]["60"].excess_pct}%</div></div>
+    <div class="kpi"><span>Trades: gated vs monthly</span><div class="big">${p.gated.trades} vs ${p.monthly.trades}</div></div></div>
+    <div class="small" style="margin-bottom:8px">Run ${r.run_date} on data through ${r.data_through}. Example portfolio since ${r.portfolio_start}; its lead over VOO comes from holding NVDA and TSLA, not from the signals. ${esc(r.note)}</div>
+    <div class="scroll"><table><tr><th>Ticker</th><th>Hold, per year</th><th>Rule, per year</th><th>Hold, worst fall</th><th>Rule, worst fall</th><th>Rule: time invested</th></tr>
+    ${io.sort((a, b) => b[1].hold.cagr_pct - a[1].hold.cagr_pct).map(([t, v]) => row(t, v)).join("")}</table></div>`;
+}
+document.addEventListener("mousemove", (e) => {
+  const s = e.target.closest && e.target.closest("svg[data-c]"), tip = $("tip");
+  if (!s) { tip.style.display = "none"; return; }
+  const c = JSON.parse(s.dataset.c), d = JSON.parse(s.dataset.d), r = s.getBoundingClientRect();
+  const i = Math.max(0, Math.min(c.length - 1, Math.round(((e.clientX - r.left) / r.width) * (c.length - 1))));
+  tip.textContent = `${s.dataset.t} · ${d[i]} · ${num(c[i], s.dataset.t)}`;
+  tip.style.display = "block"; tip.style.left = Math.min(e.clientX + 12, innerWidth - 190) + "px"; tip.style.top = e.clientY - 30 + "px";
+});
+const tick = () => { board().catch(() => { $("age").textContent = "could not load the board"; }); news(); };
+tick(); backtest().catch(() => { $("bt").textContent = "Backtest summary unavailable."; }); setInterval(tick, 60000);
 </script>
+</html>

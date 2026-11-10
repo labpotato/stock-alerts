@@ -1310,6 +1310,34 @@ def write_status(rows, sess, alerts, errs, state=None):
         out["settled"] = prev["settled"]
     out["intraday_sent"] = intraday_keys(state or {})
     json.dump(out, open(STATUS, "w"), indent=1)
+    write_board(rows, out)
+
+
+BOARD = os.path.join(DATA, "docs", "board.json")
+
+
+def write_board(rows, status):
+    """The dashboard's data (docs/index.html): every ticker's latest reading, kept across runs so
+    the page is complete even when only one market is open, plus 60 sessions of closes and bands
+    for the small charts. Public prices and signal states only, never holdings."""
+    try:
+        board = json.load(open(BOARD))
+    except Exception:
+        board = {}
+    tick = board.get("tickers") or {}
+    for o in rows:
+        t, h = o["t"], (o["d"].get("hist") or {})
+        e = dict(status["tickers"][t])
+        e.update({"name": full_name(t, o), "as_of": status["generated_utc"], "session": o.get("sess"),
+                  "hist": {"d": (h.get("dates") or [])[-60:], "c": (h.get("c") or [])[-60:],
+                           "lo": (h.get("lo") or [])[-60:], "up": (h.get("up") or [])[-60:]}})
+        tick[t] = e
+    keep = set(universe()) | set(FX)
+    board = {"generated_utc": status["generated_utc"], "session": status["session"],
+             "tickers": {t: v for t, v in tick.items() if t in keep},
+             "anomalies": status.get("anomalies", []), "alerts_today": status.get("intraday_sent", []),
+             "errors": status.get("errors", []), "ai_group": CFG.get("ai_group", [])}
+    json.dump(board, open(BOARD, "w"), separators=(",", ":"))
 
 
 # ---------------------------------------------------------------- main
