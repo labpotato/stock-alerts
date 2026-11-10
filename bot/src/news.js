@@ -160,17 +160,21 @@ export function ruleLine(status, ticker) {
 }
 
 // ---------------------------------------------------------------- Claude: one line on what it means
-export const NEWS_SYSTEM = `You write one-line market flashes for Dongmin, a private investor in Singapore, inside his Telegram alert bot. He holds US stocks and ETFs: NVDA, GOOGL, TSLA, PLTR, BE, the AI/robotics ETFs SOXX, AIPO, BOTZ and IQQ, the index ETFs VOO and QQQ, sector ETFs XLV, XLF, XLB, XLP, ITA, gold (GLDM), and he watches Samsung Electronics and SK hynix and the SGD, USD and KRW exchange rates.
+export const NEWS_SYSTEM = `You write short market flashes for Dongmin, a private investor in Singapore, inside his Telegram alert bot. He holds US stocks and ETFs: NVDA, GOOGL, TSLA, PLTR, BE, the AI/robotics ETFs SOXX, AIPO, BOTZ and IQQ, the index ETFs VOO and QQQ, sector ETFs XLV, XLF, XLB, XLP, ITA, gold (GLDM), and he watches Samsung Electronics (005930.KS) and SK hynix (000660.KS) and the SGD, USD and KRW exchange rates.
 
-For each headline decide whether it is real, new, market-moving information for something he holds or watches, and if so say in one plain sentence what it means for him.
+For each headline decide whether it is real, new, market-moving information, and if so tell him what it means, which tickers and sectors it hits, and what you honestly think.
 
 Rules
-- importance: 5 = likely to move the name or the market several percent (earnings surprise, guidance change, major regulatory or legal action, a Fed decision, a large deal); 4 = clearly material; 3 = worth knowing today; 2 = minor; 1 = noise, opinion, a recap of a move that already happened, a listicle, a price-target shuffle with nothing new, or not about his names.
+- importance: 5 = likely to move the name or the market several percent (earnings surprise, guidance change, major regulatory or legal action, a Fed decision, a large deal); 4 = clearly material; 3 = worth knowing today; 2 = minor; 1 = noise, opinion, a recap of a move that already happened, a listicle, a price-target shuffle with nothing new, or not about anything he holds or watches.
 - send is true only for importance 3 or more.
-- take: one sentence, at most 28 words, plain words, no jargon. Say what happened in effect and which way it leans for the holding (good, bad or unclear, and why). Do not tell him to buy or sell: his own rules decide that. Never invent a number or a fact that is not in the headline.
-- lean: "up", "down" or "unclear" for the affected holding.
-- tickers: the affected tickers from his list, most affected first, at most 3.
-- Write take in English, unless the headline is in Korean: then write it in Korean.`;
+- take: one sentence, at most 28 words, plain words. What happened, in effect.
+- opinion: your honest view in one or two sentences, at most 45 words. Be direct and take a side: is this a big deal or overblown, likely priced in already or not, a one-day story or one that changes the outlook. Say how confident you are when it is a judgement call. If the headline alone is too thin to judge, say so plainly instead of guessing. This is your reading of the news, not an order: do not tell him to buy or sell, because his own rules decide trades.
+- primary: the tickers hit directly, most affected first, at most 3. Use tickers from his list when they are the ones hit; otherwise the real ticker of the company in the headline.
+- secondary: tickers hit indirectly (suppliers, customers, competitors, ETFs that hold the name, the same theme), at most 4, preferring the ones he holds. Empty if there are none.
+- sectors: the sectors or themes affected, at most 3, in plain words (for example "Semiconductors", "AI infrastructure", "Banks", "Gold", "Korean exporters").
+- lean: "up", "down" or "unclear" for the primary tickers.
+- Never invent a number or a fact that is not in the headline. Knowledge of which companies are suppliers, customers or competitors is fine.
+- Write take and opinion in English, unless the headline is in Korean: then write them in Korean.`;
 
 export const NEWS_SCHEMA = {
   type: "object",
@@ -178,17 +182,20 @@ export const NEWS_SCHEMA = {
     send: { type: "boolean" },
     importance: { type: "integer" },
     lean: { type: "string", enum: ["up", "down", "unclear"] },
-    tickers: { type: "array", items: { type: "string" } },
+    primary: { type: "array", items: { type: "string" } },
+    secondary: { type: "array", items: { type: "string" } },
+    sectors: { type: "array", items: { type: "string" } },
     take: { type: "string" },
+    opinion: { type: "string" },
   },
-  required: ["send", "importance", "lean", "tickers", "take"],
+  required: ["send", "importance", "lean", "primary", "secondary", "sectors", "take", "opinion"],
   additionalProperties: false,
 };
 
 export function newsParams(item, model) {
   return {
     model: model || NEWS_MODEL,
-    max_tokens: 1500,
+    max_tokens: 2000,
     system: [{ type: "text", text: NEWS_SYSTEM, cache_control: { type: "ephemeral" } }],
     output_config: { effort: "low", format: { type: "json_schema", schema: NEWS_SCHEMA } },
     messages: [{ role: "user", content: `Source: ${item.source || "unknown"}\nHeadline: ${item.title}\nHis tickers matched by keyword: ${item.tickers.join(", ") || "none (macro)"}` }],
@@ -219,11 +226,18 @@ const sgTime = (ts) => new Date(ts + 8 * 3600000).toISOString().slice(11, 16);
 export function flash(item, j, status, now) {
   const icon = j.importance >= 5 ? "🚨" : j.importance === 4 ? "⚡" : "📰";
   const arrow = { up: "🟢", down: "🔴", unclear: "⚪" }[j.lean] || "⚪";
-  const tks = (j.tickers && j.tickers.length ? j.tickers : item.tickers).slice(0, 3);
+  const prim = (j.primary && j.primary.length ? j.primary : j.tickers && j.tickers.length ? j.tickers : item.tickers).slice(0, 3);
+  const sec = (j.secondary || []).filter((t) => !prim.includes(t)).slice(0, 4);
   const mins = Math.max(0, Math.round((now - item.ts) / 60000));
-  const lines = [`${icon} <b>${esc(tks.join(" · ") || "MARKET")}</b> · ${esc(item.source || "news")} · ${sgTime(item.ts)} SGT (${mins} min ago)`,
+  const lines = [`${icon} <b>${esc(prim.join(" · ") || "MARKET")}</b> · ${esc(item.source || "news")} · ${sgTime(item.ts)} SGT (${mins} min ago)`,
     `<b>${esc(item.title)}</b>`, "", `${arrow} ${esc(j.take)}`];
-  const rules = tks.map((t) => ruleLine(status, t)).filter(Boolean).slice(0, 2);
+  if (j.opinion) lines.push("", `💬 <b>My honest view:</b> ${esc(j.opinion)}`);
+  const hit = [];
+  if (prim.length) hit.push(`🎯 Directly hit: <b>${esc(prim.join(", "))}</b>`);
+  if (sec.length) hit.push(`↪️ Also affected: ${esc(sec.join(", "))}`);
+  if (j.sectors && j.sectors.length) hit.push(`🏭 Sectors: ${esc(j.sectors.slice(0, 3).join(", "))}`);
+  if (hit.length) lines.push("", ...hit);
+  const rules = prim.concat(sec).map((t) => ruleLine(status, t)).filter(Boolean).slice(0, 3);
   if (rules.length) lines.push("", ...rules.map((r) => `📊 Your rule: ${esc(r)}`));
   if (item.link) lines.push("", `<a href="${esc(item.link)}">Read it</a>`);
   return lines.join("\n");
@@ -273,8 +287,9 @@ export async function runNews(env, deps) {
         body: JSON.stringify({ chat_id: env.TG_CHAT, text, parse_mode: "HTML", link_preview_options: { is_disabled: true } }),
       });
       sent.push(text);
-      st.recent = [{ ts: c.ts, title: c.title, source: c.source, link: c.link, tickers: (j.tickers || []).slice(0, 3),
-                     take: j.take, lean: j.lean, importance: j.importance }, ...(st.recent || [])].slice(0, 30);
+      st.recent = [{ ts: c.ts, title: c.title, source: c.source, link: c.link, tickers: (j.primary || []).slice(0, 3),
+                     secondary: (j.secondary || []).slice(0, 4), sectors: (j.sectors || []).slice(0, 3),
+                     take: j.take, opinion: j.opinion, lean: j.lean, importance: j.importance }, ...(st.recent || [])].slice(0, 30);
     }
   }
   st.seen = st.seen.slice(-SEEN_KEEP);
