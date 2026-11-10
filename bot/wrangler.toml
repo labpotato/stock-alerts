@@ -7,9 +7,11 @@ compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
-# Starts the alerter on GitHub every 10 minutes, around the clock (times are UTC).
+# Every minute: check the news feeds. Every 10th minute the same handler also starts the alerter on
+# GitHub. The NEWS_KV namespace (which headlines were already handled) is created and bound by
+# .github/workflows/bot-deploy.yml; without it the news flashes stay off and the rest still works.
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["* * * * *"]
 
 [vars]
 GH_REPO = "labpotato/stock-alerts"

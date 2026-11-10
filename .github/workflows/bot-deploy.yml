@@ -64,6 +64,17 @@ jobs:
         if: steps.ready.outputs.go == 'yes'
         id: deploy
         run: |
+          # News flashes keep their memory in a Workers KV namespace: find it, or create it once.
+          kv=$(npx wrangler kv namespace list 2>/dev/null | python3 -c "import json,sys; print(next((n['id'] for n in json.load(sys.stdin) if 'stock-alerts-news' in n.get('title','')), ''))" 2>/dev/null || true)
+          if [ -z "$kv" ]; then
+            kv=$(npx wrangler kv namespace create stock-alerts-news 2>&1 | grep -oE '[0-9a-f]{32}' | head -1 || true)
+          fi
+          if [ -n "$kv" ]; then
+            printf '\n[[kv_namespaces]]\nbinding = "NEWS_KV"\nid = "%s"\n' "$kv" >> wrangler.toml
+            echo "News memory (KV) is bound."
+          else
+            echo "::warning::Could not find or create the KV namespace for news flashes, so they stay off. Give the CLOUDFLARE_API_TOKEN the 'Workers KV Storage: Edit' permission and re-run."
+          fi
           npx wrangler deploy 2>&1 | tee deploy.log
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
           if [ -z "$url" ]; then

@@ -47,6 +47,18 @@ next run. The alerter reads it with the read-only `HOLDINGS_TOKEN` secret and us
 `as_of`) of that file and the old `HOLDINGS_JSON` secret, which stays as a fallback. Nothing from it is
 ever printed, committed or published here.
 
+## News flashes (2026-11-10)
+
+The Cloudflare Worker (`bot/src/news.js`) checks free feeds **every minute**: Yahoo Finance and Google
+News for the single stocks, a macro query (Fed, CPI, jobs, tariffs), Korean news for Samsung
+Electronics, SK hynix and the won, the SEC's live 8-K feed for NVDA, GOOGL, TSLA, PLTR and BE, and the
+Federal Reserve's press releases. A rule filter keeps only headlines from known sources that read
+like events (earnings, guidance, deals, lawsuits, bans, rate decisions...). Claude then writes one
+line on what it means and rates it 1-5; 3 and above is sent to Telegram with what your rule currently
+says about the ticker. Each headline is handled once (memory in a Workers KV namespace the deploy
+workflow creates). At most 40 headlines a day go to Claude (`NEWS_MAX_PER_DAY`), which caps the cost;
+`NEWS_MODEL` picks the model and `NEWS = "off"` in `wrangler.toml` turns the feature off.
+
 ## Two kinds of signal
 
 | | REAL-TIME alert | Evening check |
