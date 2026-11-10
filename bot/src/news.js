@@ -46,31 +46,45 @@ export const CIK = { "1045810": "NVDA", "1652044": "GOOGL", "1318605": "TSLA", "
 
 const UA = "stock-alerts-news (+https://github.com/labpotato/stock-alerts)";
 const gnews = (q, loc) => `https://news.google.com/rss/search?q=${encodeURIComponent(q + " when:1h")}&${loc}`;
+// Google News refuses requests from Cloudflare Workers (HTTP 503, seen 2026-11-10), so each Google
+// search has a Bing News twin. Whichever answers is used; the same headline is only handled once.
+const bing = (q, extra = "") => `https://www.bing.com/news/search?q=${encodeURIComponent(q)}&qft=${encodeURIComponent('sortbydate="1"')}&format=rss${extra}`;
+const Q_STOCKS = 'Nvidia OR Tesla OR Alphabet OR Palantir OR "Bloom Energy"';
+const Q_MACRO = '"Federal Reserve" OR FOMC OR CPI OR "jobs report" OR tariffs OR "stock market"';
+const Q_KOREA = "삼성전자 OR SK하이닉스 OR 환율";
 export const FEEDS = [
   { id: "yahoo", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA,GOOGL,TSLA,PLTR,BE&region=US&lang=en-US" },
-  { id: "gnews", url: gnews('Nvidia OR Tesla OR Alphabet OR Palantir OR "Bloom Energy"', "hl=en-US&gl=US&ceid=US:en") },
-  { id: "macro", url: gnews('"Federal Reserve" OR FOMC OR CPI OR "jobs report" OR tariffs OR "stock market"', "hl=en-US&gl=US&ceid=US:en") },
-  { id: "korea", url: gnews("삼성전자 OR SK하이닉스 OR 환율", "hl=ko&gl=KR&ceid=KR:ko") },
+  { id: "gnews", url: gnews(Q_STOCKS, "hl=en-US&gl=US&ceid=US:en") },
+  { id: "bnews", url: bing(Q_STOCKS) },
+  { id: "macro", url: gnews(Q_MACRO, "hl=en-US&gl=US&ceid=US:en") },
+  { id: "bmacro", url: bing(Q_MACRO) },
+  { id: "korea", url: gnews(Q_KOREA, "hl=ko&gl=KR&ceid=KR:ko") },
+  { id: "bkorea", url: bing(Q_KOREA, "&mkt=ko-KR") },
   { id: "sec", url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&company=&dateb=&owner=include&count=40&output=atom" },
   { id: "fed", url: "https://www.federalreserve.gov/feeds/press_all.xml", always: true },
   // Less formal sources (Dongmin 2026-11-10): faster and noisier. Their flashes are marked.
   { id: "sa", url: "https://seekingalpha.com/market_currents.xml", source: "Seeking Alpha" },
-  { id: "inv", url: gnews("site:investopedia.com OR site:seekingalpha.com", "hl=en-US&gl=US&ceid=US:en") },
+  { id: "inv", url: bing("site:investopedia.com (stocks OR markets)"), source: "Investopedia" },
 ];
 export const LOOSE = ["seeking alpha", "benzinga", "reddit", "investopedia", "motley fool", "zacks"];
 
 // What people are saying: read only for the market-mood brief, never for single flashes.
+// Reddit answers 429 when several feeds are asked for at once, so its feeds are read one after another.
 const REDDIT_UA = "web:stock-alerts-news:v1 (personal market-mood reader)";
 export const MOOD_FEEDS = [
   { id: "wsb", url: "https://www.reddit.com/r/wallstreetbets/hot/.rss?limit=25", source: "Reddit r/wallstreetbets", ua: REDDIT_UA },
-  { id: "rstocks", url: "https://www.reddit.com/r/stocks/hot/.rss?limit=25", source: "Reddit r/stocks", ua: REDDIT_UA },
-  { id: "rinvest", url: "https://www.reddit.com/r/investing/hot/.rss?limit=20", source: "Reddit r/investing", ua: REDDIT_UA },
+  { id: "rstocks", url: "https://www.reddit.com/r/stocks+investing/hot/.rss?limit=40", source: "Reddit r/stocks and r/investing", ua: REDDIT_UA },
   { id: "sa", url: "https://seekingalpha.com/market_currents.xml", source: "Seeking Alpha" },
-  { id: "inv", url: "https://www.investopedia.com/feedbuilder/feed/getfeed?feedName=rss_headline", source: "Investopedia" },
-  { id: "inv2", url: gnews("site:investopedia.com", "hl=en-US&gl=US&ceid=US:en").replace("when%3A1h", "when%3A1d"), source: "Investopedia" },
-  { id: "sa2", url: gnews("site:seekingalpha.com", "hl=en-US&gl=US&ceid=US:en").replace("when%3A1h", "when%3A6h"), source: "Seeking Alpha" },
-  { id: "press", url: gnews('"stock market" OR "Wall Street" OR stocks', "hl=en-US&gl=US&ceid=US:en").replace("when%3A1h", "when%3A6h") },
+  { id: "inv", url: bing("site:investopedia.com (stocks OR markets)"), source: "Investopedia" },
+  { id: "press", url: bing('"stock market" OR "Wall Street" OR stocks') },
+  { id: "gpress", url: gnews('"stock market" OR "Wall Street" OR stocks', "hl=en-US&gl=US&ceid=US:en").replace("when%3A1h", "when%3A6h") },
 ];
+
+/** Run fn over feeds: ordinary feeds together, Reddit's one after another. */
+async function eachFeed(feeds, fn) {
+  const serial = feeds.filter((f) => f.ua), rest = feeds.filter((f) => !f.ua);
+  return Promise.all([...rest.map(fn), (async () => { for (const f of serial) await fn(f); })()]);
+}
 export const MOOD_TIMES = ["13:30", "01:00"];   // UTC: an hour before the US open (9:30 pm Singapore), and 9 am Singapore
 
 // ---------------------------------------------------------------- parsing (no XML library)
@@ -85,8 +99,17 @@ const tag = (block, name) => {
 };
 
 /** RSS <item> or Atom <entry> blocks -> [{id, title, link, ts, source}] */
+/** Hours US Pacific time is behind UTC at this moment (8 in winter, 7 in summer), in ms. */
+export function pacificOffsetMs(ts) {
+  const y = new Date(ts).getUTCFullYear();
+  const nthSunday = (month, n) => { const d = new Date(Date.UTC(y, month, 1)); return 1 + ((7 - d.getUTCDay()) % 7) + 7 * (n - 1); };
+  const start = Date.UTC(y, 2, nthSunday(2, 2), 10), end = Date.UTC(y, 10, nthSunday(10, 1), 9);
+  return (ts >= start - 8 * 3600000 && ts < end - 7 * 3600000 ? 7 : 8) * 3600000;
+}
+
 export function parseFeed(xml, feedId, minTs = 0, fixedSource = "") {
   const out = [];
+  const isBing = xml.indexOf("bing.com/news/apiclick") >= 0;
   const atom = xml.indexOf("<entry") >= 0 && xml.indexOf("<item") < 0;
   const open = atom ? "<entry" : "<item", close = atom ? "</entry>" : "</item>";
   let i = 0;
@@ -99,7 +122,8 @@ export function parseFeed(xml, feedId, minTs = 0, fixedSource = "") {
     i = b + close.length;
     // Read the time first and skip old items before any other work: the Worker's free plan
     // allows about 10 ms of CPU per run.
-    const ts = Date.parse(clean(tag(block, atom ? "updated" : "pubDate")) || clean(tag(block, "published")));
+    let ts = Date.parse(clean(tag(block, atom ? "updated" : "pubDate")) || clean(tag(block, "published")));
+    if (isBing) ts += pacificOffsetMs(ts);        // Bing prints US Pacific clock time but labels it GMT
     if (!Number.isFinite(ts) || ts < minTs) continue;
     let title = clean(tag(block, "title"));
     let link = clean(tag(block, "link"));
@@ -108,7 +132,12 @@ export function parseFeed(xml, feedId, minTs = 0, fixedSource = "") {
       link = m ? m[1].replace(/&amp;/g, "&") : "";
     }
     let source = clean(tag(block, "source"));
-    const id = clean(tag(block, atom ? "id" : "guid")) || link || title;
+    if (isBing) {
+      const m = link.match(/[?&]url=([^&]+)/);
+      if (m) { try { link = decodeURIComponent(m[1]); } catch { /* keep the Bing link */ } }
+      source = clean(tag(block, "News:Source")).replace(/ on MSN$/i, "");
+    }
+    const id = (isBing ? link : clean(tag(block, atom ? "id" : "guid"))) || link || title;
     if (feedId === "sec") {                       // "8-K - Tesla, Inc. (0001318605) (Filer)"
       const m = title.match(/\((\d{10})\)/);
       const t = m && CIK[String(Number(m[1]))];
@@ -368,7 +397,7 @@ export function moodSlot(t, times = MOOD_TIMES) {
 
 export async function gatherMood(doFetch, t) {
   const seen = new Set(), bySource = {}, status = {};
-  await Promise.all(MOOD_FEEDS.map(async (f) => {
+  await eachFeed(MOOD_FEEDS, async (f) => {
     try {
       const r = await doFetch(f.url, { headers: { "user-agent": f.ua || UA, accept: "application/atom+xml, application/rss+xml, application/xml" } });
       if (!r.ok) { status[f.id] = "http " + r.status; return; }
@@ -381,7 +410,7 @@ export async function gatherMood(doFetch, t) {
         (bySource[it.source || "Press"] ||= []).push(it.title.slice(0, 160));
       }
     } catch (e) { status[f.id] = "error"; }
-  }));
+  });
   return { bySource, status, count: seen.size };
 }
 
@@ -445,12 +474,12 @@ export async function runMood(env, deps, force = false) {
 export async function feedCheck(doFetch, t) {
   const out = {};
   const all = [...FEEDS.map((f) => ({ ...f, id: "flash:" + f.id })), ...MOOD_FEEDS.map((f) => ({ ...f, id: "mood:" + f.id }))];
-  await Promise.all(all.map(async (f) => {
+  await eachFeed(all, async (f) => {
     try {
       const r = await doFetch(f.url, { headers: { "user-agent": f.ua || UA } });
       const items = r.ok ? parseFeed(await r.text(), f.id.split(":")[1], t - 24 * 3600000, f.source) : [];
       out[f.id] = { http: r.status, items: items.length, newest_min_ago: items.length ? Math.round((t - Math.max(...items.map((x) => x.ts))) / 60000) : null };
     } catch (e) { out[f.id] = { error: String(e && e.message).slice(0, 80) }; }
-  }));
+  });
   return out;
 }

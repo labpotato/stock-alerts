@@ -124,7 +124,7 @@ test("noise is judged but not sent, the daily cap stops Claude calls, and no KV 
 });
 
 // ---------------------------------------------------------------- market mood
-import { moodMessage, moodSlot, runMood, MOOD_FEEDS, LOOSE } from "../src/news.js";
+import { moodMessage, moodSlot, runMood, MOOD_FEEDS, LOOSE, pacificOffsetMs } from "../src/news.js";
 import { answer } from "../src/bot.js";
 
 const redditAtom = (titles) => `<feed xmlns="http://www.w3.org/2005/Atom">${titles.map((t, i) => `<entry><author><name>/u/x</name></author><content type="html">&lt;div&gt;long body&lt;/div&gt;</content><id>t3_${i}</id><link href="https://www.reddit.com/r/wallstreetbets/comments/${i}/"/><updated>${new Date(NOW - i * 600000).toISOString()}</updated><published>${new Date(NOW - i * 600000).toISOString()}</published><title>${t}</title></entry>`).join("")}</feed>`;
@@ -146,8 +146,8 @@ function moodHarness(now) {
   const client = { messages: { create }, beta: { messages: { create } } };
   const fetch = async (url, init) => {
     if (url.startsWith("https://api.telegram.org")) { tg.push(JSON.parse(init.body)); return { ok: true }; }
-    if (url === MOOD_FEEDS[0].url) return { ok: true, status: 200, text: async () => redditAtom(Array.from({ length: 12 }, (_, i) => `Is the AI trade finally over? part ${i} of my losses`)) };
-    if (url === MOOD_FEEDS[3].url) return { ok: true, status: 200, text: async () => rss([{ title: "Nvidia slides as export curbs widen", guid: "s1", ts: NOW - 3600000 }]) };
+    if (url === MOOD_FEEDS.find((f) => f.id === "wsb").url) return { ok: true, status: 200, text: async () => redditAtom(Array.from({ length: 12 }, (_, i) => `Is the AI trade finally over? part ${i} of my losses`)) };
+    if (url === MOOD_FEEDS.find((f) => f.id === "sa").url) return { ok: true, status: 200, text: async () => rss([{ title: "Nvidia slides as export curbs widen", guid: "s1", ts: NOW - 3600000 }]) };
     return { ok: false, status: 403, text: async () => "" };                         // Reddit often refuses cloud servers
   };
   return { store, tg, calls, deps: { fetch, client, kv, now: () => now } };
@@ -162,7 +162,8 @@ test("the mood brief is sent once per slot, from whatever sources answer", async
   assert.match(text, /^🧠 <b>Market mood: NERVOUS<\/b> 😟 · 21:30 SGT/);
   assert.match(text, /fear ▓▓▓░░░░░░░ greed {2}\(32\/100\)/);
   assert.match(text, /💬 <b>My honest view:<\/b> The crowd is late/);
-  assert.match(text, /Reddit r\/wallstreetbets 12 · Seeking Alpha 1/);
+  assert.match(text, /Reddit r\/wallstreetbets 12/);
+  assert.match(text, /Seeking Alpha 1/);
   assert.match(h.calls[0].messages[0].content, /## Reddit r\/wallstreetbets\n- Is the AI trade finally over/);
   assert.equal(r.status.rstocks, "http 403");
   r = await runMood(ENV, h.deps);                                                    // the same minute again
@@ -182,4 +183,14 @@ test("/mood builds the brief on request, and loose sources are marked on flashes
   const text = flash({ title: "Nvidia cuts guidance", source: "Seeking Alpha", ts: NOW, link: "", tickers: ["NVDA"] },
     { importance: 4, lean: "down", primary: ["NVDA"], secondary: [], sectors: [], take: "x", opinion: "y" }, {}, NOW);
   assert.match(text, /Seeking Alpha \(less reliable source\)/);
+});
+
+test("Bing News items: real link, real source, and Pacific clock time corrected to UTC", () => {
+  const xml = `<rss><channel><item><title>Nvidia cuts guidance</title><link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;aid=&amp;tid=abc&amp;url=https%3a%2f%2fwww.fool.com%2fx%2f&amp;c=1&amp;mkt=en-us</link><pubDate>Tue, 10 Nov 2026 06:15:00 GMT</pubDate><News:Source>The Motley Fool on MSN</News:Source></item></channel></rss>`;
+  const [it] = parseFeed(xml, "bnews");
+  assert.equal(it.link, "https://www.fool.com/x/");
+  assert.equal(it.source, "The Motley Fool");
+  assert.equal(new Date(it.ts).toISOString(), "2026-11-10T14:15:00.000Z");            // winter: 8 hours
+  assert.equal(pacificOffsetMs(Date.parse("2026-07-01T12:00:00Z")) / 3600000, 7);      // summer: 7 hours
+  assert.equal(it.id, "bnews:https://www.fool.com/x/");                                // stable across fetches
 });
