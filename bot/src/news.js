@@ -40,7 +40,8 @@ export const TRIGGERS = ["earnings", "results", "revenue", "profit", "guidance",
 export const SOURCES = ["reuters", "bloomberg", "wsj", "wall street journal", "cnbc", "financial times", "ft.com",
   "associated press", "ap news", "barron", "marketwatch", "yahoo finance", "the information", "nikkei",
   "investor's business daily", "business wire", "pr newswire", "globenewswire", "sec", "federal reserve",
-  "연합뉴스", "한국경제", "매일경제", "yonhap", "korea herald", "seeking alpha", "benzinga", "the verge", "axios"];
+  "연합뉴스", "한국경제", "매일경제", "yonhap", "korea herald", "seeking alpha", "benzinga", "the verge", "axios",
+  "investopedia", "motley fool", "zacks"];
 export const CIK = { "1045810": "NVDA", "1652044": "GOOGL", "1318605": "TSLA", "1321655": "PLTR", "1664703": "BE" };
 
 const UA = "stock-alerts-news (+https://github.com/labpotato/stock-alerts)";
@@ -52,7 +53,25 @@ export const FEEDS = [
   { id: "korea", url: gnews("삼성전자 OR SK하이닉스 OR 환율", "hl=ko&gl=KR&ceid=KR:ko") },
   { id: "sec", url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&company=&dateb=&owner=include&count=40&output=atom" },
   { id: "fed", url: "https://www.federalreserve.gov/feeds/press_all.xml", always: true },
+  // Less formal sources (Dongmin 2026-11-10): faster and noisier. Their flashes are marked.
+  { id: "sa", url: "https://seekingalpha.com/market_currents.xml", source: "Seeking Alpha" },
+  { id: "inv", url: gnews("site:investopedia.com OR site:seekingalpha.com", "hl=en-US&gl=US&ceid=US:en") },
 ];
+export const LOOSE = ["seeking alpha", "benzinga", "reddit", "investopedia", "motley fool", "zacks"];
+
+// What people are saying: read only for the market-mood brief, never for single flashes.
+const REDDIT_UA = "web:stock-alerts-news:v1 (personal market-mood reader)";
+export const MOOD_FEEDS = [
+  { id: "wsb", url: "https://www.reddit.com/r/wallstreetbets/hot/.rss?limit=25", source: "Reddit r/wallstreetbets", ua: REDDIT_UA },
+  { id: "rstocks", url: "https://www.reddit.com/r/stocks/hot/.rss?limit=25", source: "Reddit r/stocks", ua: REDDIT_UA },
+  { id: "rinvest", url: "https://www.reddit.com/r/investing/hot/.rss?limit=20", source: "Reddit r/investing", ua: REDDIT_UA },
+  { id: "sa", url: "https://seekingalpha.com/market_currents.xml", source: "Seeking Alpha" },
+  { id: "inv", url: "https://www.investopedia.com/feedbuilder/feed/getfeed?feedName=rss_headline", source: "Investopedia" },
+  { id: "inv2", url: gnews("site:investopedia.com", "hl=en-US&gl=US&ceid=US:en").replace("when%3A1h", "when%3A1d"), source: "Investopedia" },
+  { id: "sa2", url: gnews("site:seekingalpha.com", "hl=en-US&gl=US&ceid=US:en").replace("when%3A1h", "when%3A6h"), source: "Seeking Alpha" },
+  { id: "press", url: gnews('"stock market" OR "Wall Street" OR stocks', "hl=en-US&gl=US&ceid=US:en").replace("when%3A1h", "when%3A6h") },
+];
+export const MOOD_TIMES = ["13:30", "01:00"];   // UTC: an hour before the US open (9:30 pm Singapore), and 9 am Singapore
 
 // ---------------------------------------------------------------- parsing (no XML library)
 const ENT = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'" };
@@ -66,7 +85,7 @@ const tag = (block, name) => {
 };
 
 /** RSS <item> or Atom <entry> blocks -> [{id, title, link, ts, source}] */
-export function parseFeed(xml, feedId, minTs = 0) {
+export function parseFeed(xml, feedId, minTs = 0, fixedSource = "") {
   const out = [];
   const atom = xml.indexOf("<entry") >= 0 && xml.indexOf("<item") < 0;
   const open = atom ? "<entry" : "<item", close = atom ? "</entry>" : "</item>";
@@ -80,7 +99,7 @@ export function parseFeed(xml, feedId, minTs = 0) {
     i = b + close.length;
     // Read the time first and skip old items before any other work: the Worker's free plan
     // allows about 10 ms of CPU per run.
-    const ts = Date.parse(clean(tag(block, atom ? "updated" : "pubDate")));
+    const ts = Date.parse(clean(tag(block, atom ? "updated" : "pubDate")) || clean(tag(block, "published")));
     if (!Number.isFinite(ts) || ts < minTs) continue;
     let title = clean(tag(block, "title"));
     let link = clean(tag(block, "link"));
@@ -99,6 +118,8 @@ export function parseFeed(xml, feedId, minTs = 0) {
       source = "SEC";
     } else if (feedId === "fed") {
       source = "Federal Reserve";
+    } else if (fixedSource) {
+      source = fixedSource;
     } else if (!source) {
       const m = title.match(/ - ([^-]{2,40})$/);   // Google News: "Headline - Source"
       source = m ? m[1].trim() : (feedId === "yahoo" ? "Yahoo Finance" : "");
@@ -229,7 +250,8 @@ export function flash(item, j, status, now) {
   const prim = (j.primary && j.primary.length ? j.primary : j.tickers && j.tickers.length ? j.tickers : item.tickers).slice(0, 3);
   const sec = (j.secondary || []).filter((t) => !prim.includes(t)).slice(0, 4);
   const mins = Math.max(0, Math.round((now - item.ts) / 60000));
-  const lines = [`${icon} <b>${esc(prim.join(" · ") || "MARKET")}</b> · ${esc(item.source || "news")} · ${sgTime(item.ts)} SGT (${mins} min ago)`,
+  const loose = LOOSE.some((x) => (item.source || "").toLowerCase().includes(x));
+  const lines = [`${icon} <b>${esc(prim.join(" · ") || "MARKET")}</b> · ${esc(item.source || "news")}${loose ? " (less reliable source)" : ""} · ${sgTime(item.ts)} SGT (${mins} min ago)`,
     `<b>${esc(item.title)}</b>`, "", `${arrow} ${esc(j.take)}`];
   if (j.opinion) lines.push("", `💬 <b>My honest view:</b> ${esc(j.opinion)}`);
   const hit = [];
@@ -259,7 +281,7 @@ export async function runNews(env, deps) {
   const texts = await Promise.all(FEEDS.map(async (f) => {
     try {
       const r = await doFetch(f.url, { headers: { "user-agent": UA, accept: "application/rss+xml, application/atom+xml, application/xml" } });
-      return r.ok ? parseFeed(await r.text(), f.id, t - MAX_AGE_MIN * 60000) : [];
+      return r.ok ? parseFeed(await r.text(), f.id, t - MAX_AGE_MIN * 60000, f.source) : [];
     } catch { return []; }
   }));
   const cands = pickCandidates(texts.flat(), seen, t);
@@ -302,4 +324,133 @@ export async function runNews(env, deps) {
 export async function recentNews(kv) {
   if (!kv) return [];
   try { return (JSON.parse((await kv.get("news")) || "{}").recent) || []; } catch { return []; }
+}
+
+
+// ---------------------------------------------------------------- market mood brief
+export const MOOD_SYSTEM = `You read what investors are saying right now and write a short market-mood brief for Dongmin, a private investor in Singapore, inside his Telegram alert bot. He holds NVDA, GOOGL, TSLA, PLTR, BE, the ETFs SOXX, AIPO, BOTZ, IQQ, VOO, QQQ, XLV, XLF, XLB, XLP, ITA, gold (GLDM), and watches Samsung Electronics and SK hynix.
+
+You get post and headline titles from Reddit (r/wallstreetbets, r/stocks, r/investing), Seeking Alpha, Investopedia and the financial press. These are noisy and partly unreliable: your job is to read the crowd, not to trust it.
+
+Rules
+- mood: one of "fearful", "nervous", "mixed", "hopeful", "greedy" for the general mentality. score: 0 (extreme fear) to 100 (extreme greed).
+- headline: the mood in at most 12 plain words.
+- talk: the 3 or 4 things people are talking about most, each at most 16 words, most common first.
+- tickers: up to 6 tickers that come up most, each as "TICKER: how people feel about it, in a few words". Prefer his holdings when they are being discussed.
+- noise: one sentence, at most 30 words, on what looks like hype, panic or repetition rather than information.
+- view: your honest opinion in at most 45 words. Take a side: is the crowd right, late, or overreacting? Say how sure you are. This is a reading of sentiment, not advice to buy or sell.
+- Use only what the titles show. Do not invent prices, numbers or events. If the titles are too few or one-sided to judge, say so in view.
+- Plain words, no jargon.`;
+
+export const MOOD_SCHEMA = {
+  type: "object",
+  properties: {
+    mood: { type: "string", enum: ["fearful", "nervous", "mixed", "hopeful", "greedy"] },
+    score: { type: "integer" },
+    headline: { type: "string" },
+    talk: { type: "array", items: { type: "string" } },
+    tickers: { type: "array", items: { type: "string" } },
+    noise: { type: "string" },
+    view: { type: "string" },
+  },
+  required: ["mood", "score", "headline", "talk", "tickers", "noise", "view"],
+  additionalProperties: false,
+};
+
+/** Which mood slot (UTC "HH:MM") is due at time t, or null. Slots follow US trading days. */
+export function moodSlot(t, times = MOOD_TIMES) {
+  const d = new Date(t), hm = d.toISOString().slice(11, 16), wd = d.getUTCDay();   // 0 = Sunday
+  if (!times.includes(hm)) return null;
+  const morning = Number(hm.slice(0, 2)) < 12;                 // the morning slot recaps the previous US day
+  if (morning ? (wd === 0 || wd === 1) : (wd === 0 || wd === 6)) return null;
+  return d.toISOString().slice(0, 16);
+}
+
+export async function gatherMood(doFetch, t) {
+  const seen = new Set(), bySource = {}, status = {};
+  await Promise.all(MOOD_FEEDS.map(async (f) => {
+    try {
+      const r = await doFetch(f.url, { headers: { "user-agent": f.ua || UA, accept: "application/atom+xml, application/rss+xml, application/xml" } });
+      if (!r.ok) { status[f.id] = "http " + r.status; return; }
+      const items = parseFeed(await r.text(), f.id, t - 24 * 3600000, f.source).slice(0, 25);
+      status[f.id] = items.length + " items";
+      for (const it of items) {
+        const key = norm(it.title).slice(0, 60);
+        if (seen.has(key) || it.title.length < 12) continue;
+        seen.add(key);
+        (bySource[it.source || "Press"] ||= []).push(it.title.slice(0, 160));
+      }
+    } catch (e) { status[f.id] = "error"; }
+  }));
+  return { bySource, status, count: seen.size };
+}
+
+export function moodParams(bySource, model) {
+  const body = Object.entries(bySource).map(([src, titles]) => `## ${src}\n` + titles.slice(0, 30).map((x) => "- " + x).join("\n")).join("\n\n");
+  return {
+    model: model || NEWS_MODEL,
+    max_tokens: 3000,
+    system: [{ type: "text", text: MOOD_SYSTEM, cache_control: { type: "ephemeral" } }],
+    output_config: { effort: "low", format: { type: "json_schema", schema: MOOD_SCHEMA } },
+    messages: [{ role: "user", content: "Titles from the last day, grouped by where they were posted:\n\n" + body }],
+  };
+}
+
+const MOOD_ICON = { fearful: "😱", nervous: "😟", mixed: "😐", hopeful: "🙂", greedy: "🤑" };
+export function moodMessage(j, g, t) {
+  const n = Math.max(0, Math.min(10, Math.round(j.score / 10)));
+  const srcs = Object.entries(g.bySource).map(([k, v]) => `${k} ${v.length}`).join(" · ");
+  const lines = [`🧠 <b>Market mood: ${esc(j.mood.toUpperCase())}</b> ${MOOD_ICON[j.mood] || ""} · ${sgTime(t)} SGT`,
+    `fear ${"▓".repeat(n)}${"░".repeat(10 - n)} greed  (${j.score}/100)`, `<b>${esc(j.headline)}</b>`, "",
+    "<b>What people are talking about</b>", ...j.talk.slice(0, 4).map((x) => "• " + esc(x))];
+  if (j.tickers.length) lines.push("", "<b>Names coming up</b>", ...j.tickers.slice(0, 6).map((x) => "• " + esc(x)));
+  lines.push("", `🔇 <b>Probably noise:</b> ${esc(j.noise)}`, "", `💬 <b>My honest view:</b> ${esc(j.view)}`, "",
+    `<i>Read from ${g.count} post and headline titles (${esc(srcs)}). Crowd talk, partly unreliable; not advice.</i>`);
+  return lines.join("\n");
+}
+
+/** Build and send the mood brief. force = on request (/mood); otherwise only at a due slot, once. */
+export async function runMood(env, deps, force = false) {
+  const { fetch: doFetch, client, kv, now = () => Date.now() } = deps;
+  const t = now();
+  const slot = force ? "manual" : moodSlot(t, env.MOOD_TIMES ? String(env.MOOD_TIMES).split(",").map((x) => x.trim()) : MOOD_TIMES);
+  if (!slot) return { skipped: "not a mood time" };
+  if (!force) {
+    if (!kv) return { off: "no NEWS_KV binding" };
+    if ((await kv.get("mood")) === slot) return { skipped: "already sent" };
+    await kv.put("mood", slot);                    // before the work, so a slow run cannot send twice
+  }
+  const g = await gatherMood(doFetch, t);
+  let text;
+  if (g.count < 8) {
+    text = `🧠 <b>Market mood</b>\nI couldn't read enough posts to judge the mood right now (${g.count} titles). Sources: ${esc(JSON.stringify(g.status))}`;
+  } else {
+    const params = moodParams(g.bySource, env.NEWS_MODEL);
+    const opts = { timeout: 25000, maxRetries: 0 };
+    const res = /haiku/.test(params.model) ? await client.messages.create(params, opts)
+      : await client.beta.messages.create({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" }, opts);
+    let j = null;
+    try { j = JSON.parse((res.content || []).filter((b) => b.type === "text").map((b) => b.text).join("")); } catch { j = null; }
+    if (!j || res.stop_reason === "refusal") return { error: "no usable answer" };
+    text = moodMessage(j, g, t);
+  }
+  await doFetch(`https://api.telegram.org/bot${env.TG_TOKEN}/sendMessage`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: env.TG_CHAT, text, parse_mode: "HTML", link_preview_options: { is_disabled: true } }),
+  });
+  return { sent: text, status: g.status };
+}
+
+/** Which feeds answer from the Worker, for checking after a deploy. No secrets, public feeds only. */
+export async function feedCheck(doFetch, t) {
+  const out = {};
+  const all = [...FEEDS.map((f) => ({ ...f, id: "flash:" + f.id })), ...MOOD_FEEDS.map((f) => ({ ...f, id: "mood:" + f.id }))];
+  await Promise.all(all.map(async (f) => {
+    try {
+      const r = await doFetch(f.url, { headers: { "user-agent": f.ua || UA } });
+      const items = r.ok ? parseFeed(await r.text(), f.id.split(":")[1], t - 24 * 3600000, f.source) : [];
+      out[f.id] = { http: r.status, items: items.length, newest_min_ago: items.length ? Math.round((t - Math.max(...items.map((x) => x.ts))) / 60000) : null };
+    } catch (e) { out[f.id] = { error: String(e && e.message).slice(0, 80) }; }
+  }));
+  return out;
 }

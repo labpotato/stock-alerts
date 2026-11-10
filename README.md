@@ -68,6 +68,18 @@ says about the ticker. Each headline is handled once (memory in a Workers KV nam
 workflow creates). At most 40 headlines a day go to Claude (`NEWS_MAX_PER_DAY`), which caps the cost;
 `NEWS_MODEL` picks the model and `NEWS = "off"` in `wrangler.toml` turns the feature off.
 
+Seeking Alpha and Investopedia headlines are read too; flashes from these (and from Motley Fool,
+Zacks, Benzinga) are marked "(less reliable source)".
+
+## Market mood (2026-11-10)
+
+Twice a day (9:30 pm Singapore, an hour before the US open, and 9 am Singapore, after the close) the
+Worker reads what is "hot" on Reddit (r/wallstreetbets, r/stocks, r/investing), Seeking Alpha,
+Investopedia and the press, and Claude writes a short brief: the general mood on a fear-to-greed scale,
+what people are talking about, which names keep coming up, what is probably noise, and an honest view.
+Send `/mood` to the bot for one on demand. This is crowd talk, not evidence: it is kept apart from the
+rule signals and never changes them. `GET /feeds` on the Worker shows which sources answered.
+
 ## Two kinds of signal
 
 | | REAL-TIME alert | Evening check |

@@ -122,3 +122,64 @@ test("noise is judged but not sent, the daily cap stops Claude calls, and no KV 
   assert.equal(capped.calls.length, 0);
   assert.deepEqual(await runNews(ENV, { ...h.deps, kv: undefined }), { off: "no NEWS_KV binding" });
 });
+
+// ---------------------------------------------------------------- market mood
+import { moodMessage, moodSlot, runMood, MOOD_FEEDS, LOOSE } from "../src/news.js";
+import { answer } from "../src/bot.js";
+
+const redditAtom = (titles) => `<feed xmlns="http://www.w3.org/2005/Atom">${titles.map((t, i) => `<entry><author><name>/u/x</name></author><content type="html">&lt;div&gt;long body&lt;/div&gt;</content><id>t3_${i}</id><link href="https://www.reddit.com/r/wallstreetbets/comments/${i}/"/><updated>${new Date(NOW - i * 600000).toISOString()}</updated><published>${new Date(NOW - i * 600000).toISOString()}</published><title>${t}</title></entry>`).join("")}</feed>`;
+const MOOD = { mood: "nervous", score: 32, headline: "Dip buyers are losing their nerve", talk: ["Is the AI trade over", "Nvidia export curbs"],
+               tickers: ["NVDA: worried about China sales"], noise: "Lots of loss screenshots.", view: "The crowd is late; most of this is already in prices." };
+
+test("mood slots: an hour before the US open on weekdays, and the Singapore morning after a US day", () => {
+  assert.equal(moodSlot(Date.parse("2026-11-10T13:30:20Z")), "2026-11-10T13:30");      // Tuesday
+  assert.equal(moodSlot(Date.parse("2026-11-10T13:31:00Z")), null);
+  assert.equal(moodSlot(Date.parse("2026-11-14T13:30:00Z")), null);                    // Saturday
+  assert.equal(moodSlot(Date.parse("2026-11-14T01:00:00Z")), "2026-11-14T01:00");      // Saturday morning: recaps Friday
+  assert.equal(moodSlot(Date.parse("2026-11-16T01:00:00Z")), null);                    // Monday morning: no US session before it
+});
+
+function moodHarness(now) {
+  const store = {}, tg = [], calls = [];
+  const kv = { get: async (k) => store[k] ?? null, put: async (k, v) => { store[k] = v; } };
+  const create = async (params) => { calls.push(params); return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(MOOD) }] }; };
+  const client = { messages: { create }, beta: { messages: { create } } };
+  const fetch = async (url, init) => {
+    if (url.startsWith("https://api.telegram.org")) { tg.push(JSON.parse(init.body)); return { ok: true }; }
+    if (url === MOOD_FEEDS[0].url) return { ok: true, status: 200, text: async () => redditAtom(Array.from({ length: 12 }, (_, i) => `Is the AI trade finally over? part ${i} of my losses`)) };
+    if (url === MOOD_FEEDS[3].url) return { ok: true, status: 200, text: async () => rss([{ title: "Nvidia slides as export curbs widen", guid: "s1", ts: NOW - 3600000 }]) };
+    return { ok: false, status: 403, text: async () => "" };                         // Reddit often refuses cloud servers
+  };
+  return { store, tg, calls, deps: { fetch, client, kv, now: () => now } };
+}
+
+test("the mood brief is sent once per slot, from whatever sources answer", async () => {
+  const at = Date.parse("2026-11-10T13:30:05Z");
+  const h = moodHarness(at);
+  let r = await runMood(ENV, h.deps);
+  assert.equal(h.tg.length, 1);
+  const text = h.tg[0].text;
+  assert.match(text, /^🧠 <b>Market mood: NERVOUS<\/b> 😟 · 21:30 SGT/);
+  assert.match(text, /fear ▓▓▓░░░░░░░ greed {2}\(32\/100\)/);
+  assert.match(text, /💬 <b>My honest view:<\/b> The crowd is late/);
+  assert.match(text, /Reddit r\/wallstreetbets 12 · Seeking Alpha 1/);
+  assert.match(h.calls[0].messages[0].content, /## Reddit r\/wallstreetbets\n- Is the AI trade finally over/);
+  assert.equal(r.status.rstocks, "http 403");
+  r = await runMood(ENV, h.deps);                                                    // the same minute again
+  assert.equal(h.tg.length, 1);
+  assert.deepEqual(await runMood(ENV, { ...h.deps, now: () => at + 5 * 60000 }), { skipped: "not a mood time" });
+});
+
+test("/mood builds the brief on request, and loose sources are marked on flashes", async () => {
+  const h = moodHarness(Date.parse("2026-11-10T03:17:00Z"));
+  let asked = 0;
+  const mood = async () => { asked += 1; return runMood(ENV, h.deps, true); };
+  const sent = await answer({ TG_TOKEN: "t", TG_CHAT: "111" }, { message_id: 1, chat: { id: 111 }, text: "/mood" }, { client: h.deps.client, fetch: h.deps.fetch, mood });
+  assert.equal(asked, 1);
+  assert.equal(h.tg.length, 1);                                                      // the brief itself, no extra reply
+  assert.equal(sent.length, 0);
+  assert.ok(LOOSE.includes("seeking alpha"));
+  const text = flash({ title: "Nvidia cuts guidance", source: "Seeking Alpha", ts: NOW, link: "", tickers: ["NVDA"] },
+    { importance: 4, lean: "down", primary: ["NVDA"], secondary: [], sectors: [], take: "x", opinion: "y" }, {}, NOW);
+  assert.match(text, /Seeking Alpha \(less reliable source\)/);
+});
