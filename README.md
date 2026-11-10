@@ -63,10 +63,16 @@ News for the single stocks, a macro query (Fed, CPI, jobs, tariffs), Korean news
 Electronics, SK hynix and the won, the SEC's live 8-K feed for NVDA, GOOGL, TSLA, PLTR and BE, and the
 Federal Reserve's press releases. A rule filter keeps only headlines from known sources that read
 like events (earnings, guidance, deals, lawsuits, bans, rate decisions...). Claude then writes one
-line on what it means and rates it 1-5; 3 and above is sent to Telegram with what your rule currently
+line on what it means and rates it 1-5; only major news (4 and above) is sent to Telegram with what your rule currently
 says about the ticker. Each headline is handled once (memory in a Workers KV namespace the deploy
 workflow creates). At most 40 headlines a day go to Claude (`NEWS_MAX_PER_DAY`), which caps the cost;
 `NEWS_MODEL` picks the model and `NEWS = "off"` in `wrangler.toml` turns the feature off.
+
+To keep it to major news (2026-11-10): at most 6 flashes a day (`NEWS_MAX_SENDS`; a 5 always gets
+through), a second flash on the same stock within 6 hours only if it rates 5, and no repeats: a
+headline whose words mostly match a flash from the last 12 hours is dropped before Claude sees it, and
+Claude is shown the recent flashes and drops anything that is the same event from another outlet
+unless it adds a major new fact. `NEWS_MIN_IMPORTANCE` changes the bar.
 
 Google News refuses requests from Cloudflare Workers (HTTP 503), so every Google search has a Bing
 News twin; whichever answers is used. Seeking Alpha and Investopedia headlines are read too; flashes from these (and from Motley Fool,

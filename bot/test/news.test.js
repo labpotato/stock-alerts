@@ -199,3 +199,49 @@ test("Bing News items: real link, real source, and Pacific clock time corrected 
   assert.equal(pacificOffsetMs(Date.parse("2026-07-01T12:00:00Z")) / 3600000, 7);      // summer: 7 hours
   assert.equal(it.id, "bnews:https://www.fool.com/x/");                                // stable across fetches
 });
+
+// ---------------------------------------------------------------- major news only, no repeats
+import { similar, MAX_SENDS_PER_DAY } from "../src/news.js";
+const V = (o) => ({ send: true, importance: 4, repeat: false, lean: "down", primary: [{ name: "NVDA", effect: "bad", why: "x" }], secondary: [], sectors: [], take: "t", opinion: "o", ...o });
+const prior = (recent, extra = {}) => JSON.stringify({ seen: [], day: "2026-11-10", count: 0, recent, ...extra });
+
+test("only major news is sent: a 3 is judged but stays quiet", async () => {
+  const h = harness([ITEM], [V({ importance: 3 })]);
+  h.store.news = prior([]);
+  await runNews(ENV, h.deps);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.tg.length, 0);
+  assert.match(h.calls[0].system[0].text, /only wants major news/);
+});
+
+test("the same story from another outlet is dropped without asking Claude", async () => {
+  assert.ok(similar("Nvidia falls 4% as board probe of Jensen Huang weighs on shares", "Nvidia shares slide as board opens probe into CEO Jensen Huang"));
+  assert.ok(!similar("Nvidia cuts revenue guidance", "Tesla recall hits 1 million cars"));
+  const h = harness([{ title: "Nvidia slashes revenue guidance for next quarter - Bloomberg", guid: "b1", ts: NOW - 30000 }], []);
+  h.store.news = prior([{ ts: NOW - 3600000, title: "Nvidia cuts revenue guidance for next quarter", tickers: [] }]);
+  await runNews(ENV, h.deps);
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.tg.length, 0);
+});
+
+test("Claude sees what was already sent; a repeat, a second 4 on the same stock, or the daily cap stay quiet", async () => {
+  let h = harness([ITEM], [V({ repeat: true, importance: 5 })]);
+  h.store.news = prior([{ ts: NOW - 3600000, title: "Board opens probe into Jensen Huang", tickers: [] }]);
+  await runNews(ENV, h.deps);
+  assert.match(h.calls[0].messages[0].content, /already sent in the last 12 hours:\n- Board opens probe into Jensen Huang/);
+  assert.equal(h.tg.length, 0);
+
+  h = harness([ITEM], [V({})]);                                   // NVDA flashed 2 hours ago: a 4 waits
+  h.store.news = prior([{ ts: NOW - 2 * 3600000, title: "Something else entirely about chips", tickers: [{ name: "NVDA" }] }]);
+  await runNews(ENV, h.deps);
+  assert.equal(h.tg.length, 0);
+  h = harness([ITEM], [V({ importance: 5 })]);                    // ... but a 5 gets through
+  h.store.news = prior([{ ts: NOW - 2 * 3600000, title: "Something else entirely about chips", tickers: [{ name: "NVDA" }] }]);
+  await runNews(ENV, h.deps);
+  assert.equal(h.tg.length, 1);
+
+  h = harness([ITEM], [V({})]);                                   // six flashes already today
+  h.store.news = prior([], { sends: MAX_SENDS_PER_DAY });
+  await runNews(ENV, h.deps);
+  assert.equal(h.tg.length, 0);
+});

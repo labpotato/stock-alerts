@@ -9,6 +9,11 @@ export const NEWS_MODEL = "claude-opus-5-5";   // override with the NEWS_MODEL v
 export const MAX_AGE_MIN = 20;                 // older headlines are not news any more
 export const MAX_PER_RUN = 3;
 export const MAX_PER_DAY = 40;                 // also caps Claude calls per day
+// "Major news only" (Dongmin 2026-11-10): importance 4+, at most 6 flashes a day, and a second
+// flash on the same stock within 6 hours only if it is a 5.
+export const MIN_IMPORTANCE = 4;
+export const MAX_SENDS_PER_DAY = 6;
+export const SAME_STOCK_HOURS = 6;
 export const SEEN_KEEP = 800;
 
 // What each watched name is called in headlines. ETFs are matched through the market words below.
@@ -197,6 +202,17 @@ export function pickCandidates(items, seen, now) {
   return out;
 }
 
+// Same story from another outlet: titles share most of their meaningful words.
+const STOP = new Set("a an the and or of to in on for at by with as is are was were be its it his her their after before over amid from into up down says said report reports new stock stocks shares share market markets today this that what why how will may could than more most".split(" "));
+const words = (s) => new Set(norm(s).split(" ").filter((w) => w.length > 2 && !STOP.has(w)));
+export function similar(a, b) {
+  const A = words(a), B = words(b);
+  let n = 0;
+  for (const w of A) if (B.has(w)) n += 1;
+  return n >= 3 && n / Math.min(A.size, B.size) >= 0.5;
+}
+export const STORY_HOURS = 12;                   // a story already flashed is not flashed again for this long
+
 // ---------------------------------------------------------------- his rule, from status.json
 const PLAIN = { "WATCH BUY": "below its normal range", "WATCH SELL": "above its normal range", BUY: "BUY signal today",
   SELL: "SELL signal today", NONE: "inside its normal range" };
@@ -216,7 +232,9 @@ For each headline decide whether it is real, new, market-moving information, and
 
 Rules
 - importance: 5 = likely to move the name or the market several percent (earnings surprise, guidance change, major regulatory or legal action, a Fed decision, a large deal); 4 = clearly material; 3 = worth knowing today; 2 = minor; 1 = noise, opinion, a recap of a move that already happened, a listicle, a price-target shuffle with nothing new, or not about anything he holds or watches.
-- send is true only for importance 3 or more.
+- Be strict: he only wants major news. Most headlines are 1-3. Give 4 only if it is likely to move one of his names 3% or more, or the whole market 1% or more. Give 5 only for the few events a day that clearly will. A follow-up, analysis, lawsuit filing or opinion piece about a story already moving the stock is 3 at most.
+- send is true only for importance 4 or more.
+- repeat: true if this is the same event as one of the flashes already sent (listed in the message), even from a different outlet or a new angle. A repeat gets send false, unless it adds a major new fact (a number, a decision, an official confirmation): then repeat false and importance 5.
 - take: one sentence, at most 28 words, plain words. What happened, in effect.
 - opinion: your honest view in one or two sentences, at most 45 words. Be direct and take a side: is this a big deal or overblown, likely priced in already or not, a one-day story or one that changes the outlook. Say how confident you are when it is a judgement call. If the headline alone is too thin to judge, say so plainly instead of guessing. This is your reading of the news, not an order: do not tell him to buy or sell, because his own rules decide trades.
 - primary: the tickers hit directly, most affected first, at most 3. Use tickers from his list when they are the ones hit; otherwise the real ticker of the company in the headline.
@@ -243,6 +261,7 @@ export const NEWS_SCHEMA = {
   properties: {
     send: { type: "boolean" },
     importance: { type: "integer" },
+    repeat: { type: "boolean" },
     lean: { type: "string", enum: ["up", "down", "unclear"] },
     primary: { type: "array", items: HIT },
     secondary: { type: "array", items: HIT },
@@ -250,22 +269,22 @@ export const NEWS_SCHEMA = {
     take: { type: "string" },
     opinion: { type: "string" },
   },
-  required: ["send", "importance", "lean", "primary", "secondary", "sectors", "take", "opinion"],
+  required: ["send", "importance", "repeat", "lean", "primary", "secondary", "sectors", "take", "opinion"],
   additionalProperties: false,
 };
 
-export function newsParams(item, model) {
+export function newsParams(item, model, already = []) {
   return {
     model: model || NEWS_MODEL,
     max_tokens: 2000,
     system: [{ type: "text", text: NEWS_SYSTEM, cache_control: { type: "ephemeral" } }],
     output_config: { effort: "low", format: { type: "json_schema", schema: NEWS_SCHEMA } },
-    messages: [{ role: "user", content: `Source: ${item.source || "unknown"}\nHeadline: ${item.title}\nHis tickers matched by keyword: ${item.tickers.join(", ") || "none (macro)"}` }],
+    messages: [{ role: "user", content: `Source: ${item.source || "unknown"}\nHeadline: ${item.title}\nHis tickers matched by keyword: ${item.tickers.join(", ") || "none (macro)"}\nFlashes already sent in the last ${STORY_HOURS} hours:${already.length ? "\n" + already.map((x) => "- " + x).join("\n") : " none"}` }],
   };
 }
 
-export async function judge(client, item, model) {
-  const params = newsParams(item, model);
+export async function judge(client, item, model, already) {
+  const params = newsParams(item, model, already);
   const opts = { timeout: 20000, maxRetries: 0 };
   // Opus, Sonnet and Fable can decline a request; the server-side fallback re-runs it. Haiku has none.
   const res = /haiku/.test(params.model)
@@ -317,7 +336,7 @@ export async function runNews(env, deps) {
   try { st = JSON.parse((await kv.get("news")) || "null"); } catch { st = null; }
   const first = !st;
   st = st || { seen: [], day, count: 0 };
-  if (st.day !== day) { st.day = day; st.count = 0; }
+  if (st.day !== day) { st.day = day; st.count = 0; st.sends = 0; }
   const seen = new Set(st.seen);
 
   const texts = await Promise.all(FEEDS.map(async (f) => {
@@ -338,10 +357,19 @@ export async function runNews(env, deps) {
     for (const c of cands) {
       if (sent.length >= MAX_PER_RUN || st.count >= (Number(env.NEWS_MAX_PER_DAY) || MAX_PER_DAY)) break;
       mark(c);
+      const lately = (st.recent || []).filter((r) => t - r.ts < STORY_HOURS * 3600000);
+      if (lately.some((r) => similar(r.title, c.title))) continue;   // same story, other outlet: no Claude call
       st.count += 1;                              // counts Claude calls, so the day's cost is capped
       let j = null;
-      try { j = await judge(client, c, env.NEWS_MODEL); } catch (e) { console.log("news judge error:", e && e.name, e && e.status); }
-      if (!j || !j.send || j.importance < 3) continue;
+      try { j = await judge(client, c, env.NEWS_MODEL, lately.slice(0, 8).map((r) => r.title)); } catch (e) { console.log("news judge error:", e && e.name, e && e.status); }
+      const minImp = Number(env.NEWS_MIN_IMPORTANCE) || MIN_IMPORTANCE;
+      if (!j || !j.send || j.repeat || j.importance < minImp) continue;
+      const names = (j.primary || []).map((x) => asHit(x).name);
+      const recentSame = (st.recent || []).some((r) => t - r.ts < SAME_STOCK_HOURS * 3600000
+        && (r.tickers || []).some((x) => names.includes(asHit(x).name)));
+      if (recentSame && j.importance < 5) continue;  // same story again: only a 5 gets through
+      if ((st.sends || 0) >= (Number(env.NEWS_MAX_SENDS) || MAX_SENDS_PER_DAY) && j.importance < 5) continue;
+      st.sends = (st.sends || 0) + 1;
       if (!status && env.STATUS_URL) {
         try { const r = await doFetch(env.STATUS_URL); status = r.ok ? await r.json() : {}; } catch { status = {}; }
       }
