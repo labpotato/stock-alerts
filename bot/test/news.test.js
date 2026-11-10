@@ -42,16 +42,20 @@ test("old, already-seen and duplicate headlines are not candidates", () => {
 
 test("the flash shows the headline, the honest view, who is hit, the sectors, and his rule", () => {
   const item = { title: "Nvidia cuts guidance", source: "Reuters", ts: NOW - 120000, link: "https://r.test/1", tickers: ["NVDA"] };
-  const j = { send: true, importance: 5, lean: "down", primary: ["NVDA"], secondary: ["SOXX", "000660.KS", "NVDA"],
-              sectors: ["Semiconductors", "AI infrastructure"], take: "Nvidia lowered its sales forecast.",
+  const j = { send: true, importance: 5, lean: "down", primary: [{ name: "NVDA", effect: "bad", why: "Lower sales forecast" }],
+              secondary: [{ name: "SOXX", effect: "bad", why: "Nvidia is a top holding" }, { name: "AMD", effect: "good", why: "Could win share" },
+                          { name: "NVDA", effect: "bad", why: "dup" }],
+              sectors: [{ name: "Semiconductors", effect: "bad", why: "AI chip demand in doubt" }, { name: "AI infrastructure", effect: "mixed", why: "Cheaper chips, slower build-out" }],
+              take: "Nvidia lowered its sales forecast.",
               opinion: "A real change in outlook, not noise. Probably not priced in." };
   const text = flash(item, j, STATUS, NOW);
   assert.match(text, /^🚨 <b>NVDA<\/b> · Reuters · 21:48 SGT \(2 min ago\)/);
   assert.match(text, /🔴 Nvidia lowered its sales forecast\./);
   assert.match(text, /💬 <b>My honest view:<\/b> A real change in outlook, not noise\. Probably not priced in\./);
-  assert.match(text, /🎯 Directly hit: <b>NVDA<\/b>/);
-  assert.match(text, /↪️ Also affected: SOXX, 000660\.KS\n/);                      // NVDA is not repeated
-  assert.match(text, /🏭 Sectors: Semiconductors, AI infrastructure/);
+  assert.match(text, /🎯 <b>Directly hit<\/b>\n🔴 <b>NVDA<\/b>: BAD\. Lower sales forecast\n/);
+  assert.match(text, /↪️ <b>Also affected<\/b>\n🔴 <b>SOXX<\/b>: BAD\. Nvidia is a top holding\n🟢 <b>AMD<\/b>: GOOD\. Could win share\n\n/);   // NVDA not repeated
+  assert.match(text, /🏭 <b>Sectors<\/b>\n🔴 <b>Semiconductors<\/b>: BAD\. AI chip demand in doubt\n🟡 <b>AI infrastructure<\/b>: MIXED\. Cheaper chips, slower build-out/);
+  assert.ok(flash(item, { ...j, primary: ["NVDA"], secondary: ["SOXX"], sectors: ["Chips"] }, STATUS, NOW).includes("• <b>SOXX</b>"));   // older plain lists still show
   assert.match(text, /📊 Your rule: NVDA \$178\.67 \(-2\.1% today\): below its normal range, momentum 27 \(sold off hard\)/);
   assert.match(text, /<a href="https:\/\/r\.test\/1">Read it<\/a>/);
   assert.equal(ruleLine(STATUS, "TSLA"), null);
@@ -105,7 +109,7 @@ test("the first run only learns what is already out; later runs send new, import
   assert.equal(recent.length, 1);
   assert.equal(recent[0].title, "Tesla recall hits 1 million cars");
   assert.equal(recent[0].opinion, "Costly but routine.");
-  assert.deepEqual(recent[0].sectors, ["Electric vehicles"]);
+  assert.deepEqual(recent[0].sectors, [{ name: "Electric vehicles", effect: "", why: "" }]);
   r = await runNews(ENV, { ...h2.deps });                         // same feed again: nothing new
   assert.equal(h2.tg.length, 1);
 });
@@ -129,7 +133,7 @@ import { answer } from "../src/bot.js";
 
 const redditAtom = (titles) => `<feed xmlns="http://www.w3.org/2005/Atom">${titles.map((t, i) => `<entry><author><name>/u/x</name></author><content type="html">&lt;div&gt;long body&lt;/div&gt;</content><id>t3_${i}</id><link href="https://www.reddit.com/r/wallstreetbets/comments/${i}/"/><updated>${new Date(NOW - i * 600000).toISOString()}</updated><published>${new Date(NOW - i * 600000).toISOString()}</published><title>${t}</title></entry>`).join("")}</feed>`;
 const MOOD = { mood: "nervous", score: 32, headline: "Dip buyers are losing their nerve", talk: ["Is the AI trade over", "Nvidia export curbs"],
-               tickers: ["NVDA: worried about China sales"], noise: "Lots of loss screenshots.", view: "The crowd is late; most of this is already in prices." };
+               tickers: [{ name: "NVDA", effect: "bad", why: "Worried about China sales" }], noise: "Lots of loss screenshots.", view: "The crowd is late; most of this is already in prices." };
 
 test("mood slots: an hour before the US open on weekdays, and the Singapore morning after a US day", () => {
   assert.equal(moodSlot(Date.parse("2026-11-10T13:30:20Z")), "2026-11-10T13:30");      // Tuesday
@@ -162,6 +166,7 @@ test("the mood brief is sent once per slot, from whatever sources answer", async
   assert.match(text, /^🧠 <b>Market mood: NERVOUS<\/b> 😟 · 21:30 SGT/);
   assert.match(text, /fear ▓▓▓░░░░░░░ greed {2}\(32\/100\)/);
   assert.match(text, /💬 <b>My honest view:<\/b> The crowd is late/);
+  assert.match(text, /🔴 <b>NVDA<\/b>: BEARISH\. Worried about China sales/);
   assert.match(text, /Reddit r\/wallstreetbets 12/);
   assert.match(text, /Seeking Alpha 1/);
   assert.match(h.calls[0].messages[0].content, /## Reddit r\/wallstreetbets\n- Is the AI trade finally over/);

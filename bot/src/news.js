@@ -222,9 +222,21 @@ Rules
 - primary: the tickers hit directly, most affected first, at most 3. Use tickers from his list when they are the ones hit; otherwise the real ticker of the company in the headline.
 - secondary: tickers hit indirectly (suppliers, customers, competitors, ETFs that hold the name, the same theme), at most 4, preferring the ones he holds. Empty if there are none.
 - sectors: the sectors or themes affected, at most 3, in plain words (for example "Semiconductors", "AI infrastructure", "Banks", "Gold", "Korean exporters").
+- For every primary, secondary and sector entry give effect: "good" or "bad" for that name specifically, or "mixed" only when it truly cuts both ways. The same news is often good for one name and bad for another (a competitor's loss is a rival's gain; a strong dollar hurts exporters and helps importers): judge each one on its own. Add why: at most 12 plain words on how it is hit.
 - lean: "up", "down" or "unclear" for the primary tickers.
 - Never invent a number or a fact that is not in the headline. Knowledge of which companies are suppliers, customers or competitors is fine.
 - Write take and opinion in English, unless the headline is in Korean: then write them in Korean.`;
+
+const HIT = {
+  type: "object",
+  properties: { name: { type: "string" }, effect: { type: "string", enum: ["good", "bad", "mixed"] }, why: { type: "string" } },
+  required: ["name", "effect", "why"],
+  additionalProperties: false,
+};
+/** One affected name, from either the current {name, effect, why} or an older plain string. */
+const asHit = (x) => (typeof x === "string" ? { name: x, effect: "", why: "" } : { name: String(x.name || ""), effect: x.effect || "", why: x.why || "" });
+const EFFECT = { good: "🟢", bad: "🔴", mixed: "🟡" };
+const hitLine = (h) => `${EFFECT[h.effect] || "•"} <b>${esc(h.name)}</b>${h.effect ? `: ${h.effect.toUpperCase()}` : ""}${h.why ? `. ${esc(h.why)}` : ""}`;
 
 export const NEWS_SCHEMA = {
   type: "object",
@@ -232,9 +244,9 @@ export const NEWS_SCHEMA = {
     send: { type: "boolean" },
     importance: { type: "integer" },
     lean: { type: "string", enum: ["up", "down", "unclear"] },
-    primary: { type: "array", items: { type: "string" } },
-    secondary: { type: "array", items: { type: "string" } },
-    sectors: { type: "array", items: { type: "string" } },
+    primary: { type: "array", items: HIT },
+    secondary: { type: "array", items: HIT },
+    sectors: { type: "array", items: HIT },
     take: { type: "string" },
     opinion: { type: "string" },
   },
@@ -276,18 +288,19 @@ const sgTime = (ts) => new Date(ts + 8 * 3600000).toISOString().slice(11, 16);
 export function flash(item, j, status, now) {
   const icon = j.importance >= 5 ? "🚨" : j.importance === 4 ? "⚡" : "📰";
   const arrow = { up: "🟢", down: "🔴", unclear: "⚪" }[j.lean] || "⚪";
-  const prim = (j.primary && j.primary.length ? j.primary : j.tickers && j.tickers.length ? j.tickers : item.tickers).slice(0, 3);
-  const sec = (j.secondary || []).filter((t) => !prim.includes(t)).slice(0, 4);
+  const primH = (j.primary && j.primary.length ? j.primary : j.tickers && j.tickers.length ? j.tickers : item.tickers).map(asHit).slice(0, 3);
+  const prim = primH.map((h) => h.name);
+  const secH = (j.secondary || []).map(asHit).filter((h) => !prim.includes(h.name)).slice(0, 4);
+  const sec = secH.map((h) => h.name);
+  const secsH = (j.sectors || []).map(asHit).slice(0, 3);
   const mins = Math.max(0, Math.round((now - item.ts) / 60000));
   const loose = LOOSE.some((x) => (item.source || "").toLowerCase().includes(x));
   const lines = [`${icon} <b>${esc(prim.join(" · ") || "MARKET")}</b> · ${esc(item.source || "news")}${loose ? " (less reliable source)" : ""} · ${sgTime(item.ts)} SGT (${mins} min ago)`,
     `<b>${esc(item.title)}</b>`, "", `${arrow} ${esc(j.take)}`];
   if (j.opinion) lines.push("", `💬 <b>My honest view:</b> ${esc(j.opinion)}`);
-  const hit = [];
-  if (prim.length) hit.push(`🎯 Directly hit: <b>${esc(prim.join(", "))}</b>`);
-  if (sec.length) hit.push(`↪️ Also affected: ${esc(sec.join(", "))}`);
-  if (j.sectors && j.sectors.length) hit.push(`🏭 Sectors: ${esc(j.sectors.slice(0, 3).join(", "))}`);
-  if (hit.length) lines.push("", ...hit);
+  if (primH.length) lines.push("", "🎯 <b>Directly hit</b>", ...primH.map(hitLine));
+  if (secH.length) lines.push("", "↪️ <b>Also affected</b>", ...secH.map(hitLine));
+  if (secsH.length) lines.push("", "🏭 <b>Sectors</b>", ...secsH.map(hitLine));
   const rules = prim.concat(sec).map((t) => ruleLine(status, t)).filter(Boolean).slice(0, 3);
   if (rules.length) lines.push("", ...rules.map((r) => `📊 Your rule: ${esc(r)}`));
   if (item.link) lines.push("", `<a href="${esc(item.link)}">Read it</a>`);
@@ -338,8 +351,8 @@ export async function runNews(env, deps) {
         body: JSON.stringify({ chat_id: env.TG_CHAT, text, parse_mode: "HTML", link_preview_options: { is_disabled: true } }),
       });
       sent.push(text);
-      st.recent = [{ ts: c.ts, title: c.title, source: c.source, link: c.link, tickers: (j.primary || []).slice(0, 3),
-                     secondary: (j.secondary || []).slice(0, 4), sectors: (j.sectors || []).slice(0, 3),
+      st.recent = [{ ts: c.ts, title: c.title, source: c.source, link: c.link, tickers: (j.primary || []).map(asHit).slice(0, 3),
+                     secondary: (j.secondary || []).map(asHit).slice(0, 4), sectors: (j.sectors || []).map(asHit).slice(0, 3),
                      take: j.take, opinion: j.opinion, lean: j.lean, importance: j.importance }, ...(st.recent || [])].slice(0, 30);
     }
   }
@@ -365,7 +378,7 @@ Rules
 - mood: one of "fearful", "nervous", "mixed", "hopeful", "greedy" for the general mentality. score: 0 (extreme fear) to 100 (extreme greed).
 - headline: the mood in at most 12 plain words.
 - talk: the 3 or 4 things people are talking about most, each at most 16 words, most common first.
-- tickers: up to 6 tickers that come up most, each as "TICKER: how people feel about it, in a few words". Prefer his holdings when they are being discussed.
+- tickers: up to 6 tickers that come up most. name is the ticker; effect is "good" if the crowd is bullish on it, "bad" if bearish, "mixed" if split; why is how people feel about it, at most 12 words. Prefer his holdings when they are being discussed.
 - noise: one sentence, at most 30 words, on what looks like hype, panic or repetition rather than information.
 - view: your honest opinion in at most 45 words. Take a side: is the crowd right, late, or overreacting? Say how sure you are. This is a reading of sentiment, not advice to buy or sell.
 - Use only what the titles show. Do not invent prices, numbers or events. If the titles are too few or one-sided to judge, say so in view.
@@ -378,7 +391,7 @@ export const MOOD_SCHEMA = {
     score: { type: "integer" },
     headline: { type: "string" },
     talk: { type: "array", items: { type: "string" } },
-    tickers: { type: "array", items: { type: "string" } },
+    tickers: { type: "array", items: HIT },
     noise: { type: "string" },
     view: { type: "string" },
   },
@@ -432,7 +445,7 @@ export function moodMessage(j, g, t) {
   const lines = [`🧠 <b>Market mood: ${esc(j.mood.toUpperCase())}</b> ${MOOD_ICON[j.mood] || ""} · ${sgTime(t)} SGT`,
     `fear ${"▓".repeat(n)}${"░".repeat(10 - n)} greed  (${j.score}/100)`, `<b>${esc(j.headline)}</b>`, "",
     "<b>What people are talking about</b>", ...j.talk.slice(0, 4).map((x) => "• " + esc(x))];
-  if (j.tickers.length) lines.push("", "<b>Names coming up</b>", ...j.tickers.slice(0, 6).map((x) => "• " + esc(x)));
+  if (j.tickers.length) lines.push("", "<b>Names coming up</b>", ...j.tickers.slice(0, 6).map((x) => hitLine(asHit(x)).replace(/: (GOOD|BAD|MIXED)/, (m, e) => `: ${{ GOOD: "BULLISH", BAD: "BEARISH", MIXED: "SPLIT" }[e]}`)));
   lines.push("", `🔇 <b>Probably noise:</b> ${esc(j.noise)}`, "", `💬 <b>My honest view:</b> ${esc(j.view)}`, "",
     `<i>Read from ${g.count} post and headline titles (${esc(srcs)}). Crowd talk, partly unreliable; not advice.</i>`);
   return lines.join("\n");
