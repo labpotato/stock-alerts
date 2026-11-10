@@ -124,7 +124,9 @@ async function news() {
     $("news").innerHTML = n.length ? n.slice(0, 12).map((x) => `<div class="news">
       <div class="meta">${x.importance >= 5 ? "🚨" : x.importance === 4 ? "⚡" : "📰"} ${esc((x.tickers || []).join(" · ") || "MARKET")} · ${esc(x.source)} · ${ago(new Date(x.ts).toISOString())}</div>
       <div class="t"><a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a></div>
-      <div class="k">${{ up: "▲", down: "▼", unclear: "•" }[x.lean] || "•"} ${esc(x.take)}</div></div>`).join("") : "No flash yet. They also arrive in Telegram.";
+      <div class="k">${{ up: "▲", down: "▼", unclear: "•" }[x.lean] || "•"} ${esc(x.take)}</div>
+      ${x.opinion ? `<div class="k">💬 ${esc(x.opinion)}</div>` : ""}
+      ${(x.secondary || []).length || (x.sectors || []).length ? `<div class="meta">${(x.secondary || []).length ? "also: " + esc(x.secondary.join(", ")) : ""}${(x.secondary || []).length && (x.sectors || []).length ? " · " : ""}${(x.sectors || []).length ? "sectors: " + esc(x.sectors.join(", ")) : ""}</div>` : ""}</div>`).join("") : "No flash yet. They also arrive in Telegram.";
   } catch { $("news").textContent = "News panel unavailable right now; flashes still arrive in Telegram."; }
 }
 async function backtest() {

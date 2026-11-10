@@ -40,11 +40,18 @@ test("old, already-seen and duplicate headlines are not candidates", () => {
   assert.deepEqual(got, ["a"]);
 });
 
-test("the flash shows the headline, Claude's take, and what his rule says", () => {
+test("the flash shows the headline, the honest view, who is hit, the sectors, and his rule", () => {
   const item = { title: "Nvidia cuts guidance", source: "Reuters", ts: NOW - 120000, link: "https://r.test/1", tickers: ["NVDA"] };
-  const text = flash(item, { send: true, importance: 5, lean: "down", tickers: ["NVDA"], take: "Lower sales ahead; bad for NVDA." }, STATUS, NOW);
+  const j = { send: true, importance: 5, lean: "down", primary: ["NVDA"], secondary: ["SOXX", "000660.KS", "NVDA"],
+              sectors: ["Semiconductors", "AI infrastructure"], take: "Nvidia lowered its sales forecast.",
+              opinion: "A real change in outlook, not noise. Probably not priced in." };
+  const text = flash(item, j, STATUS, NOW);
   assert.match(text, /^🚨 <b>NVDA<\/b> · Reuters · 21:48 SGT \(2 min ago\)/);
-  assert.match(text, /🔴 Lower sales ahead; bad for NVDA\./);
+  assert.match(text, /🔴 Nvidia lowered its sales forecast\./);
+  assert.match(text, /💬 <b>My honest view:<\/b> A real change in outlook, not noise\. Probably not priced in\./);
+  assert.match(text, /🎯 Directly hit: <b>NVDA<\/b>/);
+  assert.match(text, /↪️ Also affected: SOXX, 000660\.KS\n/);                      // NVDA is not repeated
+  assert.match(text, /🏭 Sectors: Semiconductors, AI infrastructure/);
   assert.match(text, /📊 Your rule: NVDA \$178\.67 \(-2\.1% today\): below its normal range, momentum 27 \(sold off hard\)/);
   assert.match(text, /<a href="https:\/\/r\.test\/1">Read it<\/a>/);
   assert.equal(ruleLine(STATUS, "TSLA"), null);
@@ -55,6 +62,7 @@ test("the Claude request is structured, low effort, with a frozen cacheable syst
   assert.equal(p.model, "claude-opus-5-5");
   assert.equal(p.output_config.effort, "low");
   assert.equal(p.output_config.format.type, "json_schema");
+  for (const k of ["primary", "secondary", "sectors", "opinion"]) assert.ok(p.output_config.format.schema.required.includes(k), k);
   assert.equal(p.system[0].text, NEWS_SYSTEM);
   assert.equal(p.thinking, undefined);
   assert.equal(newsParams({ title: "x", tickers: [] }, "claude-haiku-5-5").model, "claude-haiku-5-5");
@@ -85,7 +93,7 @@ test("the first run only learns what is already out; later runs send new, import
   assert.equal(h.calls.length, 0);
   // A new headline appears.
   const h2 = harness([ITEM, { title: "Tesla recall hits 1 million cars - CNBC", guid: "t1", ts: NOW - 30000 }],
-                     [{ send: true, importance: 4, lean: "down", tickers: ["TSLA"], take: "A large recall; bad for TSLA." }]);
+                     [{ send: true, importance: 4, lean: "down", primary: ["TSLA"], secondary: [], sectors: ["Electric vehicles"], take: "A large recall.", opinion: "Costly but routine." }]);
   h2.store.news = h.store.news;
   r = await runNews(ENV, h2.deps);
   assert.equal(h2.calls.length, 1);
@@ -96,12 +104,14 @@ test("the first run only learns what is already out; later runs send new, import
   const recent = JSON.parse(h2.store.news).recent;
   assert.equal(recent.length, 1);
   assert.equal(recent[0].title, "Tesla recall hits 1 million cars");
+  assert.equal(recent[0].opinion, "Costly but routine.");
+  assert.deepEqual(recent[0].sectors, ["Electric vehicles"]);
   r = await runNews(ENV, { ...h2.deps });                         // same feed again: nothing new
   assert.equal(h2.tg.length, 1);
 });
 
 test("noise is judged but not sent, the daily cap stops Claude calls, and no KV means off", async () => {
-  const h = harness([ITEM], [{ send: false, importance: 1, lean: "unclear", tickers: [], take: "Recap." }]);
+  const h = harness([ITEM], [{ send: false, importance: 1, lean: "unclear", primary: [], secondary: [], sectors: [], take: "Recap.", opinion: "Noise." }]);
   h.store.news = JSON.stringify({ seen: [], day: "2026-11-10", count: 0 });
   await runNews(ENV, h.deps);
   assert.equal(h.calls.length, 1);
