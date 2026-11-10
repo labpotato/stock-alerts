@@ -162,6 +162,7 @@ Examples:
 • Is there news on GOOGL today?
 • What would fire if QQQ closed at 700?
 
+Send /mood for a quick read of what investors are saying right now.
 Tip: reply to one of my alerts to ask about that alert.
 I can't trade or change anything; I only answer.`;
 
@@ -186,6 +187,11 @@ export async function answer(env, msg, deps) {
   if (!question) return sent;
   if (/^\/(start|help)\b/i.test(question)) {
     await send(HELP);
+    return sent;
+  }
+  if (/^\/mood\b/i.test(question) && deps.mood) {      // the market-mood brief, on request
+    const r = await deps.mood();
+    if (!r || !r.sent) await send("I couldn't build the mood brief just now. Try again in a minute.");
     return sent;
   }
   doFetch(`https://api.telegram.org/bot${env.TG_TOKEN}/sendChatAction`, {
