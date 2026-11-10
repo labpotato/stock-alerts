@@ -90,7 +90,7 @@ def test_fx_message_is_direct_and_mirror_pairs_send_once(make_watch):
     msgs = w.decide([a, b], [], state, "REGULAR")
     assert len(msgs) == 1
     text = msgs[0][0]
-    assert text.startswith("💱 <b>Favourable to buy Korean won with Singapore dollars</b>")
+    assert text.startswith("💱 <b>I would buy Korean won with Singapore dollars now</b>")
     assert "S$1,000 buys <b>₩1,058,900</b> now, 1.2% more than on a typical day." in text
     assert "Momentum" not in text and "Price range" not in text and "score" not in text
     assert len(text) < 400
@@ -103,3 +103,20 @@ def test_fx_unusual_move_is_direct(make_watch):
     text, png = w.anomaly_message({"ticker": "SGDKRW=X", "kind": "move", "title": "x"}, [o], "REGULAR")
     assert text.startswith("💱 <b>Big move: the Korean won fell against the Singapore dollar</b>")
     assert "S$1,000 buys <b>₩1,058,900</b> now, versus ₩1,048,800 at the last close (+1.0%)" in text
+    assert "<b>I would wait:</b>" in text
+
+
+def test_every_currency_message_comes_with_its_chart(make_watch):
+    fx = {"SGDKRW=X": {"base": "SGD", "quote": "KRW", "label": "SGD→KRW", "name": "SGD to KRW"}}
+    w, _ = make_watch(tickers=("QQQ",), fx=fx)
+    w.price_chart = lambda *a, **k: b"PNG:" + a[4].encode()
+    a = _fx_row("SGDKRW=X", ("SELL", "r"), 1058.9, 1065.5, 1028.2)
+    text, png = w.signal_message(a, "SELL", ["r"], [], "REGULAR")
+    assert png == b"PNG:I would buy KRW with SGD"
+    state = {"sent": ["SGDKRW=X:SELL:r", "fx:SGD>KRW"], "pending": {}, "obs": {}}
+    a["ev"]["k"] = "SELL"
+    text, png = w.decide([a], [], state, "REGULAR")[0]
+    assert text.startswith("💱 <b>Now I would definitely buy Korean won with Singapore dollars</b>") and png
+    a["d"], a["px"] = {"c": [1048.8] * 3}, 1058.9
+    text, png = w.anomaly_message({"ticker": "SGDKRW=X", "kind": "move", "title": "x"}, [a], "REGULAR")
+    assert png == b"PNG:Big move"
