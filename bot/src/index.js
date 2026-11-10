@@ -1,10 +1,16 @@
 // Cloudflare Worker entry: Telegram sends each message here (webhook).
 import Anthropic from "@anthropic-ai/sdk";
 import { answer, dispatchAlerter, isAllowed } from "./bot.js";
-import { runNews } from "./news.js";
+import { recentNews, runNews } from "./news.js";
 
 export default {
   async fetch(request, env, ctx) {
+    if (request.method === "GET" && new URL(request.url).pathname === "/news") {
+      // The dashboard's news panel: the last flashes (public headlines only).
+      return new Response(JSON.stringify(await recentNews(env.NEWS_KV)), {
+        headers: { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "max-age=30" },
+      });
+    }
     if (request.method !== "POST") return new Response("ok");
     let update;
     try {

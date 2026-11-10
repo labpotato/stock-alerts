@@ -47,6 +47,15 @@ next run. The alerter reads it with the read-only `HOLDINGS_TOKEN` secret and us
 `as_of`) of that file and the old `HOLDINGS_JSON` secret, which stays as a fallback. Nothing from it is
 ever printed, committed or published here.
 
+## Dashboard (2026-11-10)
+
+**https://labpotato.github.io/stock-alerts/** is a terminal-style page (`docs/index.html`): one card per
+ticker with the live price, a 60-session chart with its normal range, the momentum gauge and what the
+rule says; currencies; today's alerts; unusual moves; the latest news flashes (from the Worker's
+`/news`); and the backtest summary (`docs/backtest.json`, produced by `tools/backtest.py`). It reads
+`docs/board.json`, which every alerter run refreshes, and reloads itself every minute. Public prices
+and signal states only: no holdings.
+
 ## News flashes (2026-11-10)
 
 The Cloudflare Worker (`bot/src/news.js`) checks free feeds **every minute**: Yahoo Finance and Google

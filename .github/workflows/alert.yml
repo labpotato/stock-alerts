@@ -48,7 +48,7 @@ jobs:
         run: |
           git config user.name  "stock-alerts"
           git config user.email "actions@github.com"
-          git add -A state.json bars_cache.json docs/status.json 2>/dev/null || true
+          git add -A state.json bars_cache.json docs/status.json docs/board.json 2>/dev/null || true
           git diff --staged --quiet && exit 0
           git commit -q -m "state $(date -u +%F\ %H:%M)"
           for i in 1 2 3; do

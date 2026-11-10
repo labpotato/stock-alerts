@@ -273,9 +273,18 @@ export async function runNews(env, deps) {
         body: JSON.stringify({ chat_id: env.TG_CHAT, text, parse_mode: "HTML", link_preview_options: { is_disabled: true } }),
       });
       sent.push(text);
+      st.recent = [{ ts: c.ts, title: c.title, source: c.source, link: c.link, tickers: (j.tickers || []).slice(0, 3),
+                     take: j.take, lean: j.lean, importance: j.importance }, ...(st.recent || [])].slice(0, 30);
     }
   }
   st.seen = st.seen.slice(-SEEN_KEEP);
   await kv.put("news", JSON.stringify(st));
   return { sent, candidates: cands.length, first };
+}
+
+
+/** The last flashes, for the dashboard. Public news only. */
+export async function recentNews(kv) {
+  if (!kv) return [];
+  try { return (JSON.parse((await kv.get("news")) || "{}").recent) || []; } catch { return []; }
 }
