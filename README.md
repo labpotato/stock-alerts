@@ -102,6 +102,17 @@ watched tickers over the last 45 days. The news judge sees these lines for the t
 touches, so its honest view can weigh a headline against the last reported numbers. Congress
 disclosures arrive up to 45 days after the trade: public and old, not inside information.
 
+## Time-machine odds on signal charts (2026-11-11)
+
+Every signal alert (stocks, currencies and "close to a BUY") draws a fan to the right of today's price:
+10,000 replays of the next 20 sessions, each built from 5-day blocks of the ticker's own daily moves
+over the past year (`odds.py`, seed 19, so anyone can repeat it). The shaded bands hold 50% and 80% of
+the replays, the dashed line is the middle path, and the message gives the chance of ending higher, up
+5% or more, or down 5% or more. It also gives the signal's real record on that ticker in the past year:
+how often it fired and how often the price was higher 20 sessions later. The idea comes from
+day-trader-skill's `trader-timemachine`. It is a simulation from past moves, not a forecast: it cannot
+see earnings or news.
+
 ## Two kinds of signal
 
 | | REAL-TIME alert | Evening check |
