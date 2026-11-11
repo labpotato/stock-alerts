@@ -298,8 +298,7 @@ def derive(rows, dates=None):
         "sigma": robust_sigma(rets),
         "closes60": c[-6:],                # for 3-day and 5-day run checks
         "hist": hist,
-        "fan": OD.fan(c),                  # 10,000 replays of the next 20 sessions (alert charts)
-        "record": OD.record(rows),         # what happened after each past fire of each leg
+        "fan": OD.fan(c),                  # 10,000 replays of the next 20 sessions, trend removed (range)
     }
 
 
@@ -325,7 +324,7 @@ def build_cache(tickers, market_date=None, ref_px=None):
     for t in tickers:
         have = cache.get(t)
         if (isinstance(have, dict) and market_date and have.get("_tried") == market_date
-                and ("hist" in have or "ema" not in have) and ("fan" in have or "ema" not in have)):
+                and ("hist" in have or "ema" not in have) and ((have.get("fan") or {}).get("v") == 2 or "ema" not in have)):
             if "ema" not in have:
                 errs.append(f"{t}: {have.get('_err', 'no bars')} (retry tomorrow)")
             continue
@@ -1089,26 +1088,29 @@ def _ticks(ax, dates, n):
 
 
 def odds_text(t, d, side=None, legs=()):
-    """Chart box and message lines for the time-machine odds, or (None, []) without data."""
+    """Chart box and message lines: the range from the fan (checked: the 80% band held 79% of real
+    outcomes, 2004-2026) and, for a signal, what really followed that signal over 22 years.
+    The fan's own up/down odds are not shown: that check found they predicted nothing."""
     f = d.get("fan")
-    if not f:
+    if not f or f.get("v") != 2:
         return None, []
-    box = (f"{f['replays']:,} replays of its own past year, next {f['horizon']} sessions:\n"
-           f"higher {f['p_up']:.0f}%  ·  up 5%+ {f['p_up5']:.0f}%  ·  down 5%+ {f['p_dn5']:.0f}%")
-    lines = [f"⏳ <b>Time machine</b> ({f['replays']:,} replays of {esc(label(t))}'s own past year, "
-             f"next {f['horizon']} sessions): ends higher in <b>{f['p_up']:.0f}%</b>, up 5% or more in "
-             f"{f['p_up5']:.0f}%, down 5% or more in {f['p_dn5']:.0f}%. Middle path: "
-             f"{(f['p50'][-1] - 1) * 100:+.1f}%."]
-    rec = OD.summary(d.get("record") or {}, legs, side) if side else None
-    if rec:
-        box += (f"\nThis signal here, past year: {rec['n']}x, higher {OD.HORIZON} sessions later "
-                f"{rec['higher']}x (middle {rec['median']:+.1f}%)")
-        lines.append(f"📜 <b>Its real record:</b> this signal fired {rec['n']} time{'s' if rec['n'] != 1 else ''} "
-                     f"on {esc(label(t))} in the past year; {rec['higher']} ended higher {OD.HORIZON} sessions "
-                     f"later (middle move {rec['median']:+.1f}%)." + (" Too few to lean on." if rec["n"] < 5 else ""))
-    elif side:
-        lines.append(f"📜 <b>Its real record:</b> this signal did not fire on {esc(label(t))} in the past year.")
-    lines.append("<i>A simulation from its own past moves, not a forecast: it cannot see earnings or news.</i>")
+    lo80, hi80 = (f["p10"][-1] - 1) * 100, (f["p90"][-1] - 1) * 100
+    box = f"Likely range in {f['horizon']} sessions (8 in 10 replays): {lo80:+.0f}% to {hi80:+.0f}%"
+    lines = [f"⏳ <b>Likely range</b>: in {f['horizon']} sessions, 8 in 10 of {f['replays']:,} replays of "
+             f"{esc(label(t))}'s past-year moves end between <b>{lo80:+.1f}%</b> and <b>{hi80:+.1f}%</b> "
+             f"from here. This range has held about 8 times in 10 since 2004, less in crashes."]
+    h = OD.history(t, legs, side) if side and not is_fx(t) else None   # the record is from stocks and ETFs
+    if h:
+        b = h["base"] or {}
+        who = f"on {esc(label(t))}" if h["scope"] == "own" else f"across {h['tickers']} stocks and ETFs"
+        box += (f"\nAfter this signal since {h['since']} ({h['n']}x): higher {h['higher']:.0f}% "
+                f"(any day {b.get('higher', 0):.0f}%), middle {h['median']:+.1f}%")
+        lines.append(f"📜 <b>What really followed this signal</b> {who} since {h['since']} ({h['n']} times): "
+                     f"higher {OD.HORIZON} sessions later <b>{h['higher']:.0f}%</b> of the time, middle move "
+                     f"{h['median']:+.1f}%, up 5%+ {h['up5']:.0f}%, down 5%+ {h['down5']:.0f}%. "
+                     f"On an ordinary day: higher {b.get('higher', 0):.0f}%, middle {b.get('median', 0):+.1f}%.")
+    lines.append("<i>The range uses its past-year swings with no trend; it does not say which way. "
+                  "It cannot see earnings or news.</i>")
     return box, lines
 
 
@@ -1146,7 +1148,7 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
             pp = {k: [ev["px"]] + [ev["px"] * v for v in fan[k]] for k in ("p10", "p25", "p50", "p75", "p90")}
             ax.fill_between(fx_, pp["p10"], pp["p90"], color=color, alpha=0.10, lw=0, label="80% of replays")
             ax.fill_between(fx_, pp["p25"], pp["p75"], color=color, alpha=0.20, lw=0, label="50% of replays")
-            ax.plot(fx_, pp["p50"], color=color, lw=1.6, ls="--", label="middle path")
+            ax.plot(fx_, pp["p50"], color=color, lw=1.2, ls="--", label="no-trend middle")
             ax.axvline(xt, color="#90a4ae", lw=0.8, ls=":")
             ax.text(xt + fan["horizon"], pp["p50"][-1], f" {money(t, pp['p50'][-1])}", color=color, fontsize=8,
                     va="center", fontweight="bold")
@@ -1154,7 +1156,7 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
                     color="#546e7a", va="top")
             ax.text(0.99, 0.03, odds, transform=ax.transAxes, fontsize=8.5, ha="right", va="bottom",
                     color="#263238", bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=color, lw=0.8, alpha=0.92))
-        ax.scatter([xt], [ev["px"]], s=130, color=color, zorder=6, edgecolor="white", linewidth=1.8)
+        ax.scatter([xt], [ev["px"]], s=45, color=color, zorder=6, edgecolor="white", linewidth=1.2)
         lo_y, hi_y = min(lo + h["c"]), max(up + h["c"])
         above = ev["px"] > (lo_y + hi_y) / 2
         ax.annotate(f"{money(t, ev['px'])} now", xy=(xt, ev["px"]),
@@ -1179,7 +1181,7 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
         ax2.axhline(70, ls=":", c="#c62828", lw=0.8)
         ax2.axhline(30, ls=":", c="#2e7d32", lw=0.8)
         ax2.plot(x2, r, color="#5e35b1", lw=1.4)
-        ax2.scatter([xt], [ev["rsi"]], s=55, color=color, zorder=6, edgecolor="white", linewidth=1.2)
+        ax2.scatter([xt], [ev["rsi"]], s=22, color=color, zorder=6, edgecolor="white", linewidth=0.9)
         ax2.text(0.5, 86, "overheated (above 70)", fontsize=7.5, color="#c62828")
         ax2.text(0.5, 7, "sold off hard (below 30)", fontsize=7.5, color="#2e7d32")
         ax2.set_ylim(0, 100)
