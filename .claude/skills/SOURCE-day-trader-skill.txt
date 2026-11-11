@@ -1,0 +1,2 @@
+From https://github.com/Jakeschincariol/day-trader-skill (MIT, see LICENSE-day-trader-skill), commit:
+3d0f4ef6986f4984b7c6bd46f7ff4f87744c3abd

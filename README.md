@@ -87,6 +87,21 @@ what people are talking about, which names keep coming up, what is probably nois
 Send `/mood` to the bot for one on demand. This is crowd talk, not evidence: it is kept apart from the
 rule signals and never changes them. `GET /feeds` on the Worker shows which sources answered.
 
+## Research facts from day-trader-skill (2026-11-11)
+
+Four skills from [day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill) (MIT) live in
+`.claude/skills/` so any Claude session on this repo can use them: `trader-analyst` (earnings from SEC
+filings), `trader-pelosi` (House trade disclosures), `trader-news` and `trader-timemachine`. The
+day-trading parts (scanner, entry, exit, sizing, risk, broker) are left out: they are built for
+intraday trades, and the broker skill can lead to orders.
+
+`.github/workflows/research.yml` runs `tools/research.py` once a day after the US close. It writes
+`docs/research.json`: each single stock's last filed quarter (revenue and EPS against a year earlier,
+margins; needs a `SEC_USER_AGENT` secret, "Name email", which SEC requires) and Congress trades in the
+watched tickers over the last 45 days. The news judge sees these lines for the tickers a headline
+touches, so its honest view can weigh a headline against the last reported numbers. Congress
+disclosures arrive up to 45 days after the trade: public and old, not inside information.
+
 ## Two kinds of signal
 
 | | REAL-TIME alert | Evening check |
