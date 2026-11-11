@@ -94,6 +94,8 @@ def test_evening_check_confirmed_and_faded(make_watch):
     assert "Fires:" in conf[0]
     assert "KNIFE-EDGE" in fade[0] and "below by 0.0001%" in fade[0]
     assert "Fires:</b> nothing" in fade[0]
+    assert "⏳ <b>Likely range</b>" in conf[0] and "What really followed this signal" in conf[0]   # predictions on every chart
+    assert "⏳ <b>Likely range</b>" in fade[0] and "What really followed" not in fade[0]
     s = w.read_status()
     assert s["schema"] == 2 and s["settled"]["date"] == "2026-11-04"
     assert set(s["intraday_sent"]) == {"GLDM:BUY:k", "QQQ:BUY:k"}

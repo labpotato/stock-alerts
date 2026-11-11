@@ -61,3 +61,31 @@ def test_a_signal_message_carries_the_range_and_the_long_record_and_the_chart_dr
     out = os.environ.get("ODDS_PNG")
     if out:
         open(out, "wb").write(png)
+
+
+def test_every_price_chart_and_its_message_carry_the_range(make_watch):
+    """Dongmin 2026-11-11: predictions on every chart, not only on signals."""
+    w, m = make_watch(tickers=("QQQ", "BOTZ"))
+    state = {"sent": [], "pending": {}, "obs": {}}
+    m.now, m.prices = et(2026, 11, 4, 9, 45), {"BOTZ": 32.60}
+    res, sess, _ = w.poll(state)
+    botz = next(o for o in res[0] if o["t"] == "BOTZ")
+    text, _ = w.mixed_message(botz, sess)
+    assert "⏳ <b>Likely range</b>" in text and "What really followed" not in text   # no side, no record
+    a = {"ticker": "BOTZ", "title": "Unusual move — BOTZ", "chart_head": "Unusual move", "note": "x", "text": "y"}
+    text, _ = w.anomaly_message(a, res[0], sess)
+    assert "⏳ <b>Likely range</b>" in text
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    drawn = []
+    real = plt.Axes.fill_between if hasattr(plt, "Axes") else None
+    w.mpl = lambda: plt
+    import matplotlib.axes
+    orig = matplotlib.axes.Axes.fill_between
+    matplotlib.axes.Axes.fill_between = lambda self, *x, **k: (drawn.append(k.get("label")), orig(self, *x, **k))[1]
+    try:
+        png = w.price_chart("BOTZ", "Global X Robotics & AI ETF", botz["d"], botz["ev"], "Big move", "#ef6c00", "x")
+    finally:
+        matplotlib.axes.Axes.fill_between = orig
+    assert png and "80% of replays" in drawn                              # the fan is drawn without being asked
