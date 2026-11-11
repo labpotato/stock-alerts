@@ -7,6 +7,7 @@ sys.path.insert(0, HERE)
 import signals as SG                                         # noqa: E402  shared with the post-close run
 import orders as OR
 import hedge as HG                                          # noqa: E402
+import odds as OD                                           # noqa: E402
 from signals import ema, atr, rsi, states, edges             # noqa: E402,F401
 
 TOK, CHAT = os.environ.get("TG_TOKEN", ""), os.environ.get("TG_CHAT", "")
@@ -297,6 +298,8 @@ def derive(rows, dates=None):
         "sigma": robust_sigma(rets),
         "closes60": c[-6:],                # for 3-day and 5-day run checks
         "hist": hist,
+        "fan": OD.fan(c),                  # 10,000 replays of the next 20 sessions (alert charts)
+        "record": OD.record(rows),         # what happened after each past fire of each leg
     }
 
 
@@ -322,7 +325,7 @@ def build_cache(tickers, market_date=None, ref_px=None):
     for t in tickers:
         have = cache.get(t)
         if (isinstance(have, dict) and market_date and have.get("_tried") == market_date
-                and ("hist" in have or "ema" not in have)):
+                and ("hist" in have or "ema" not in have) and ("fan" in have or "ema" not in have)):
             if "ema" not in have:
                 errs.append(f"{t}: {have.get('_err', 'no bars')} (retry tomorrow)")
             continue
@@ -658,8 +661,11 @@ def fx_signal_message(o, side, legs, earlier, sess):
              f"with {CURRENCY.get(frm, frm)} now</b>",
              f"{fx_amount(frm, unit, whole=True)} buys <b>{fx_amount(to, now)}</b> now"
              + (f", {pct:.1f}% more than on a typical day." if pct >= 0.1 else ", about a typical day's rate."),
-             "", fx_reason(t, side) + (" Both measures agree." if strong else ""),
-             "", f"<i>{when_text()} · REAL-TIME · alert only, nothing has been traded.</i>"]
+             "", fx_reason(t, side) + (" Both measures agree." if strong else "")]
+    _, olines = odds_text(t, o["d"], side, legs)
+    if olines:
+        lines += ["", f"<i>For the rate on the chart ({esc(label(t))}):</i>"] + olines
+    lines += ["", f"<i>{when_text()} · REAL-TIME · alert only, nothing has been traded.</i>"]
     return "\n".join(lines), fx_chart(o, side)
 
 
@@ -669,7 +675,8 @@ def fx_chart(o, side=None):
     if side:
         frm, to = fx_action(t, side)
         return price_chart(t, full_name(t, o), o["d"], ev, f"I would buy {to} with {frm}",
-                           "#2e7d32" if side == "BUY" else "#c62828", f"{to} favoured")
+                           "#2e7d32" if side == "BUY" else "#c62828", f"{to} favoured",
+                           odds=odds_text(t, o["d"], side, ("k", "r"))[0])
     return price_chart(t, full_name(t, o), o["d"], ev, "Big move", "#ef6c00", "unusual move today")
 
 
@@ -711,6 +718,9 @@ def signal_message(o, side, legs, earlier, sess, held=False):
                      "so prices can jump around more.</i>")
     if held:
         lines.append("<i>Checked on two readings 10 minutes apart, to rule out a one-off odd trade.</i>")
+    box, olines = odds_text(t, o["d"], side, legs)
+    if olines:
+        lines += olines + [""]
     lines += [f"<b>{'What it means' if is_fx(t) else 'Your plan'}:</b> {plan_text(t, side)}", "",
               "<i>Alert only. Nothing has been traded.</i>"]
     note = {"SELL": "fell back inside its normal range" if "k" in legs else "momentum cooled below 70",
@@ -718,7 +728,7 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     head = (f"{verdict}: buy {fx_action(t, side)[1]} with {fx_action(t, side)[0]}" if is_fx(t)
             else f"{verdict} at {money(t, ev['px'])}")
     png = price_chart(t, full_name(t, o), o["d"], ev, head,
-                      "#2e7d32" if side == "BUY" else "#c62828", note)
+                      "#2e7d32" if side == "BUY" else "#c62828", note, odds=box)
     return "\n".join(lines).replace("\n\n\n", "\n\n"), png
 
 
@@ -790,10 +800,11 @@ def near_buy_message(o, sess, lvl, leg):
              f"<b>Not a signal yet.</b> A BUY appears if the price reaches <b>{money(t, lvl)}</b> "
              f"({pct:+.1f}% from now).", "", how, "", other, "",
              (f"<b>If it happens:</b> {fx_do(t, 'BUY')}" if is_fx(t)
-              else f"<b>If it happens, your plan:</b> {plan_text(t, 'BUY')}"), "",
-             "<i>Sent because you asked. Nothing has been traded.</i>"]
+              else f"<b>If it happens, your plan:</b> {plan_text(t, 'BUY')}"), ""]
+    box, olines = odds_text(t, o["d"], "BUY", (leg,))
+    lines += (olines + [""] if olines else []) + ["<i>Sent because you asked. Nothing has been traded.</i>"]
     png = price_chart(t, full_name(t, o), o["d"], ev, f"Close to a BUY: {pct:+.1f}% away", "#1565c0",
-                      "not a signal yet", target=lvl, target_label="BUY if it reaches")
+                      "not a signal yet", target=lvl, target_label="BUY if it reaches", odds=box)
     return "\n".join(lines), png
 
 
@@ -1077,8 +1088,33 @@ def _ticks(ax, dates, n):
     ax.set_xticklabels(lab + ["now"], fontsize=8)
 
 
-def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, target_label=""):
-    """Top: price, its normal range (shaded) and 3-day average. Bottom: momentum score."""
+def odds_text(t, d, side=None, legs=()):
+    """Chart box and message lines for the time-machine odds, or (None, []) without data."""
+    f = d.get("fan")
+    if not f:
+        return None, []
+    box = (f"{f['replays']:,} replays of its own past year, next {f['horizon']} sessions:\n"
+           f"higher {f['p_up']:.0f}%  ·  up 5%+ {f['p_up5']:.0f}%  ·  down 5%+ {f['p_dn5']:.0f}%")
+    lines = [f"⏳ <b>Time machine</b> ({f['replays']:,} replays of {esc(label(t))}'s own past year, "
+             f"next {f['horizon']} sessions): ends higher in <b>{f['p_up']:.0f}%</b>, up 5% or more in "
+             f"{f['p_up5']:.0f}%, down 5% or more in {f['p_dn5']:.0f}%. Middle path: "
+             f"{(f['p50'][-1] - 1) * 100:+.1f}%."]
+    rec = OD.summary(d.get("record") or {}, legs, side) if side else None
+    if rec:
+        box += (f"\nThis signal here, past year: {rec['n']}x, higher {OD.HORIZON} sessions later "
+                f"{rec['higher']}x (middle {rec['median']:+.1f}%)")
+        lines.append(f"📜 <b>Its real record:</b> this signal fired {rec['n']} time{'s' if rec['n'] != 1 else ''} "
+                     f"on {esc(label(t))} in the past year; {rec['higher']} ended higher {OD.HORIZON} sessions "
+                     f"later (middle move {rec['median']:+.1f}%)." + (" Too few to lean on." if rec["n"] < 5 else ""))
+    elif side:
+        lines.append(f"📜 <b>Its real record:</b> this signal did not fire on {esc(label(t))} in the past year.")
+    lines.append("<i>A simulation from its own past moves, not a forecast: it cannot see earnings or news.</i>")
+    return box, lines
+
+
+def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, target_label="", odds=None):
+    """Top: price, its normal range (shaded) and 3-day average. Bottom: momentum score.
+    odds: a line of text; when given, the chart also draws the time-machine fan (d["fan"])."""
     h = d.get("hist")
     plt = mpl() if h else None
     if not plt:
@@ -1104,6 +1140,20 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
             ax.axhline(target, color=color, ls="--", lw=1.2)
             ax.text(xs[len(xs) // 3], target, f" {target_label} {money(t, target)} ", color=color, fontsize=9,
                     fontweight="bold", va="bottom", bbox=dict(fc="white", ec="none", alpha=0.8, pad=1))
+        fan = d.get("fan") if odds else None
+        if fan:
+            fx_ = [xt] + [xt + j + 1 for j in range(fan["horizon"])]
+            pp = {k: [ev["px"]] + [ev["px"] * v for v in fan[k]] for k in ("p10", "p25", "p50", "p75", "p90")}
+            ax.fill_between(fx_, pp["p10"], pp["p90"], color=color, alpha=0.10, lw=0, label="80% of replays")
+            ax.fill_between(fx_, pp["p25"], pp["p75"], color=color, alpha=0.20, lw=0, label="50% of replays")
+            ax.plot(fx_, pp["p50"], color=color, lw=1.6, ls="--", label="middle path")
+            ax.axvline(xt, color="#90a4ae", lw=0.8, ls=":")
+            ax.text(xt + fan["horizon"], pp["p50"][-1], f" {money(t, pp['p50'][-1])}", color=color, fontsize=8,
+                    va="center", fontweight="bold")
+            ax.text(xt + 0.6, ax.get_ylim()[1], f"next {fan['horizon']} sessions →", fontsize=7.5,
+                    color="#546e7a", va="top")
+            ax.text(0.99, 0.03, odds, transform=ax.transAxes, fontsize=8.5, ha="right", va="bottom",
+                    color="#263238", bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=color, lw=0.8, alpha=0.92))
         ax.scatter([xt], [ev["px"]], s=130, color=color, zorder=6, edgecolor="white", linewidth=1.8)
         lo_y, hi_y = min(lo + h["c"]), max(up + h["c"])
         above = ev["px"] > (lo_y + hi_y) / 2
@@ -1115,7 +1165,7 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
         ax.set_title(f"{label(t)}  ·  {name}", loc="left", fontsize=12, fontweight="bold", pad=22)
         ax.text(0, 1.02, f"{headline}  ·  {note}", transform=ax.transAxes, fontsize=11,
                 color=color, fontweight="bold")
-        ax.legend(loc="upper left", fontsize=8, frameon=False, ncol=3)
+        ax.legend(loc="upper left", fontsize=8, frameon=False, ncol=3 if not fan else 4)
         if target is not None:   # keep the target line on the chart even if it is outside recent prices
             y0, y1 = ax.get_ylim()
             ax.set_ylim(min(y0, target * 0.99), max(y1, target * 1.01))
@@ -1136,6 +1186,8 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
         ax2.set_ylabel("momentum\nscore", fontsize=9)
         ax2.grid(alpha=0.18)
         _ticks(ax2, h["dates"], n)
+        if fan:
+            ax.set_xlim(-1, xt + fan["horizon"] + 4)
         fig.text(0.01, 0.005, "Not financial advice. Nothing has been traded.", fontsize=7, color="#888")
         buf = io.BytesIO()
         fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
