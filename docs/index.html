@@ -75,13 +75,25 @@ function spark(v, t) {
   const h = v.hist || {}, c = (h.c || []).concat([v.price]), lo = (h.lo || []).concat([v.lower]), up = (h.up || []).concat([v.upper]);
   const d = (h.d || []).concat(["now"]);
   if (c.length < 5) return "";
-  const all = c.concat(lo, up).filter((x) => x != null), mn = Math.min(...all), mx = Math.max(...all), W = 220, H = 46;
-  const X = (i) => (i / (c.length - 1)) * W, Y = (y) => H - 2 - ((y - mn) / (mx - mn || 1)) * (H - 4);
-  const line = (a) => a.map((y, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(y).toFixed(1)).join("");
+  // The 20-session range (8 in 10 and 5 in 10 of 10,000 replays, trend removed), drawn right of "now".
+  const f = v.fan && v.price ? v.fan : null, F = f ? f.p10.length : 0;
+  const fp = f ? Object.fromEntries(Object.entries(f).map(([k, a]) => [k, [v.price].concat(a.map((r) => r * v.price))])) : {};
+  const all = c.concat(lo, up, f ? fp.p10.concat(fp.p90) : []).filter((x) => x != null);
+  const mn = Math.min(...all), mx = Math.max(...all), W = 220, H = 46, n = c.length - 1 + F;
+  const X = (i) => (i / n) * W, Y = (y) => H - 2 - ((y - mn) / (mx - mn || 1)) * (H - 4);
+  const line = (a, o = 0) => a.map((y, i) => (i ? "L" : "M") + X(i + o).toFixed(1) + " " + Y(y).toFixed(1)).join("");
   const band = line(up) + lo.map((y, i) => "L" + X(lo.length - 1 - i).toFixed(1) + " " + Y(lo[lo.length - 1 - i]).toFixed(1)).join("") + "Z";
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-t="${esc(t)}" data-c='${JSON.stringify(c)}' data-d='${JSON.stringify(d)}'>
-    <path d="${band}" fill="var(--band)"/><path d="${line(c)}" fill="none" stroke="var(--blue)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-    <circle cx="${X(c.length - 1)}" cy="${Y(v.price)}" r="2.6" fill="var(--ink)"/></svg>`;
+  const o = c.length - 1, wedge = (a, b) => line(a, o) + b.map((y, i) => "L" + X(o + b.length - 1 - i).toFixed(1) + " " + Y(b[b.length - 1 - i]).toFixed(1)).join("") + "Z";
+  const fan = f ? `<path d="${wedge(fp.p90, fp.p10)}" fill="var(--blue)" opacity=".12"/><path d="${wedge(fp.p75, fp.p25)}" fill="var(--blue)" opacity=".22"/>
+    <path d="${line(fp.p50, o)}" fill="none" stroke="var(--blue)" stroke-dasharray="3 2" stroke-width="1" vector-effect="non-scaling-stroke"/>` : "";
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-t="${esc(t)}" data-c='${JSON.stringify(c)}' data-d='${JSON.stringify(d)}' data-n="${n}">
+    <path d="${band}" fill="var(--band)"/>${fan}<path d="${line(c)}" fill="none" stroke="var(--blue)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <circle cx="${X(o)}" cy="${Y(v.price)}" r="2" fill="var(--ink)"/></svg>`;
+}
+function rangeText(v) {
+  if (!v.fan) return "";
+  const a = (v.fan.p10[v.fan.p10.length - 1] - 1) * 100, b = (v.fan.p90[v.fan.p90.length - 1] - 1) * 100;
+  return `<div class="small" title="8 in 10 of 10,000 replays of its past-year moves, trend removed. Held about 8 times in 10 since 2004; it does not say which way.">20-day range ${a >= 0 ? "+" : ""}${a.toFixed(0)}% to +${b.toFixed(0)}%</div>`;
 }
 function card(t, v) {
   const up = v.day_pct >= 0, k = STATE[v.keltner] || ["", v.keltner], m = MOM[v.momentum] || ["", v.momentum];
@@ -92,7 +104,7 @@ function card(t, v) {
     <div class="row"><span class="tk">${esc(v.label || t)}</span><span class="px">${num(v.price, v.label)}</span></div>
     <div class="row"><span class="nm" title="${esc(v.name)}">${esc(v.name || "")}</span>
       <span class="chg ${up ? "upc" : "dnc"}">${up ? "▲" : "▼"} ${Math.abs(v.day_pct).toFixed(2)}%</span></div>
-    ${spark(v, v.label || t)}
+    ${spark(v, v.label || t)}${rangeText(v)}
     <div class="gauge" title="Momentum (RSI) ${v.rsi}: under 30 is sold off, over 70 is overheated"><b style="left:30%"></b><b style="left:70%"></b><i style="left:${Math.max(0, Math.min(100, v.rsi))}%"></i></div>
     <span class="chip ${k[0]}">range: ${k[1]}</span><span class="chip ${m[0]}">momentum ${Math.round(v.rsi)}: ${m[1]}</span>
     <div class="small">${near}${near ? " · " : ""}<span class="${old ? "stale" : ""}">${old ? "⚠ " : ""}read ${ago(v.as_of)}</span></div></div>`;
@@ -151,8 +163,10 @@ document.addEventListener("mousemove", (e) => {
   const s = e.target.closest && e.target.closest("svg[data-c]"), tip = $("tip");
   if (!s) { tip.style.display = "none"; return; }
   const c = JSON.parse(s.dataset.c), d = JSON.parse(s.dataset.d), r = s.getBoundingClientRect();
-  const i = Math.max(0, Math.min(c.length - 1, Math.round(((e.clientX - r.left) / r.width) * (c.length - 1))));
-  tip.textContent = `${s.dataset.t} · ${d[i]} · ${num(c[i], s.dataset.t)}`;
+  const n = +s.dataset.n || c.length - 1, j = Math.round(((e.clientX - r.left) / r.width) * n);
+  const i = Math.max(0, Math.min(c.length - 1, j));
+  tip.textContent = j > c.length - 1 ? `${s.dataset.t} · next 20 sessions: likely range (shaded), not a forecast of direction`
+    : `${s.dataset.t} · ${d[i]} · ${num(c[i], s.dataset.t)}`;
   tip.style.display = "block"; tip.style.left = Math.min(e.clientX + 12, innerWidth - 190) + "px"; tip.style.top = e.clientY - 30 + "px";
 });
 const tick = () => { board().catch(() => { $("age").textContent = "could not load the board"; }); news(); };

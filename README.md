@@ -104,7 +104,8 @@ disclosures arrive up to 45 days after the trade: public and old, not inside inf
 
 ## Time-machine range and signal record on charts (2026-11-11)
 
-Every signal alert (stocks, currencies and "close to a BUY") draws a fan to the right of today's price:
+Every price chart (signals, mixed readings, unusual moves, the evening check, currency charts and the
+dashboard cards) draws a fan to the right of today's price:
 10,000 replays of the next 20 sessions from 5-day blocks of the ticker's own past-year daily moves, with
 that year's trend removed (`odds.py`, seed 19). The bands hold 50% and 80% of the replays. For a stock
 signal the message also says what really followed that signal: the ticker's own record since its data

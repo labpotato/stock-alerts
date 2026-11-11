@@ -775,8 +775,8 @@ def mixed_message(o, sess):
              f"Price range <b>{kside}</b> + Momentum <b>{rside}</b>  →  <b>the two measures disagree</b>", "",
              why("k", kside, ref, ev), "", why("r", rside, ref, ev), "",
              ("<b>What it means:</b> the two measures disagree, so <b>neither currency is favoured</b>; no need to change money."
-              if is_fx(t) else "<b>Your plan:</b> your rules say a mixed signal triggers nothing."), "",
-             "<i>Alert only. Nothing has been traded.</i>"]
+              if is_fx(t) else "<b>Your plan:</b> your rules say a mixed signal triggers nothing."), ""]
+    lines += (odds_text(t, o["d"])[1] or []) + ["", "<i>Alert only. Nothing has been traded.</i>"]
     png = price_chart(t, full_name(t, o), o["d"], ev, "MIXED: measures disagree", "#ef6c00",
                       "the two measures point opposite ways")
     return "\n".join(lines), png
@@ -969,11 +969,14 @@ def anomaly_message(a, rows, sess):
     head = f"⚠️ <b>{esc(a['title'])}</b>"
     if a["ticker"] and is_fx(a["ticker"]) and a.get("kind") == "move":
         o = next(x for x in rows if x["t"] == a["ticker"])
-        return fx_move_message(a, o), (fx_chart(o) if o.get("ev", {}).get("up") else None)
+        extra = odds_text(a["ticker"], o["d"])[1]
+        return (fx_move_message(a, o) + ("\n\n" + "\n".join(extra) if extra else ""),
+                (fx_chart(o) if o.get("ev", {}).get("up") else None))
     if a["ticker"]:
         o = next(x for x in rows if x["t"] == a["ticker"])
         body = [head, esc(full_name(a["ticker"], o)), f"{when_text()} · {sess_text(a['ticker'], o.get('sess', sess))}",
-                "", a["text"], "", "<i>A heads-up, not a buy or sell signal on its own.</i>"]
+                "", a["text"], ""] + [x for x in odds_text(a["ticker"], o["d"])[1]] + \
+               ["", "<i>A heads-up, not a buy or sell signal on its own.</i>"]
         png = price_chart(a["ticker"], full_name(a["ticker"], o), o["d"], o["ev"], a["chart_head"],
                           "#ef6c00", a["note"], shade=a.get("shade", 0))
     else:
@@ -1142,7 +1145,9 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
             ax.axhline(target, color=color, ls="--", lw=1.2)
             ax.text(xs[len(xs) // 3], target, f" {target_label} {money(t, target)} ", color=color, fontsize=9,
                     fontweight="bold", va="bottom", bbox=dict(fc="white", ec="none", alpha=0.8, pad=1))
-        fan = d.get("fan") if odds else None
+        fan = d.get("fan") if (d.get("fan") or {}).get("v") == 2 else None   # every price chart (Dongmin 2026-11-11)
+        if fan and odds is None:
+            odds = odds_text(t, d)[0]
         if fan:
             fx_ = [xt] + [xt + j + 1 for j in range(fan["horizon"])]
             pp = {k: [ev["px"]] + [ev["px"] * v for v in fan[k]] for k in ("p10", "p25", "p50", "p75", "p90")}
@@ -1385,6 +1390,9 @@ def write_board(rows, status):
         e.update({"name": full_name(t, o), "as_of": status["generated_utc"], "session": o.get("sess"),
                   "hist": {"d": (h.get("dates") or [])[-60:], "c": (h.get("c") or [])[-60:],
                            "lo": (h.get("lo") or [])[-60:], "up": (h.get("up") or [])[-60:]}})
+        f = o["d"].get("fan") or {}
+        if f.get("v") == 2:   # the 20-session range, as ratios to the price (dashboard chart)
+            e["fan"] = {k: f[k] for k in ("p10", "p25", "p50", "p75", "p90")}
         tick[t] = e
     keep = set(universe()) | set(FX)
     board = {"generated_utc": status["generated_utc"], "session": status["session"],
@@ -1939,6 +1947,7 @@ def settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day):
     if any(e.get(f"knife_{l}") for l in legs):
         lines += ["", knife_line(e, legs)]
     lines += ["", "<i>Nothing has been traded.</i>"]
+    odds_box = None
     color = {"CONFIRMED": "#2e7d32" if side == "BUY" else "#c62828", "FADED": "#757575",
              "CLOSE": "#1565c0", "CONFLICT": "#ef6c00"}[kind]
     png = None
@@ -1946,7 +1955,12 @@ def settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day):
         d = derive(r["rows"][:-1], r["dates"][:-1])
         note = {"CONFIRMED": "held to the close", "FADED": "faded by the close",
                 "CLOSE": "seen only at the close", "CONFLICT": "measures disagree"}[kind]
-        png = price_chart(t, full_name(t), d, ev, f"{kind.title()}: {verdict}", color, note)
+        has_side = kind in ("CONFIRMED", "CLOSE") and side in ("BUY", "SELL")
+        odds_box, olines = odds_text(t, d, side if has_side else None, sorted(sv or iv) if has_side else ())
+        if olines:
+            i = lines.index("<i>Nothing has been traded.</i>")
+            lines[i:i] = olines + [""]
+        png = price_chart(t, full_name(t), d, ev, f"{kind.title()}: {verdict}", color, note, odds=odds_box)
     except Exception as ex:
         print(f"settled chart {t}: {ex}", file=sys.stderr)
     return "\n".join(lines).replace("\n\n\n", "\n\n"), png
