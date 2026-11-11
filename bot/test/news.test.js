@@ -245,3 +245,22 @@ test("Claude sees what was already sent; a repeat, a second 4 on the same stock,
   await runNews(ENV, h.deps);
   assert.equal(h.tg.length, 0);
 });
+
+// ---------------------------------------------------------------- facts on file (day-trader-skill research)
+import { researchLines } from "../src/news.js";
+const RESEARCH = { fundamentals: [{ ticker: "NVDA", period_end: "2026-07-26", revenue_growth_yoy: 62.4, eps_growth_yoy: 58.1, net_margin: 55.6 }],
+  congress: [{ member: "Hon. A B", owner: "spouse", action: "purchase", ticker: "NVDA", amount: "$15,001 - $50,000", date: "2026-10-01", filed: "2026-10-20" }] };
+
+test("filed numbers and Congress trades for the headline's tickers reach Claude", async () => {
+  assert.deepEqual(researchLines(RESEARCH, ["TSLA"]), []);
+  const lines = researchLines(RESEARCH, ["NVDA"]);
+  assert.equal(lines[0], "NVDA last filed quarter (to 2026-07-26): revenue +62% and EPS +58% vs a year earlier, net margin 56%");
+  assert.match(lines[1], /^Congress: Hon\. A B \(spouse\) purchase NVDA \$15,001 - \$50,000 on 2026-10-01, disclosed 2026-10-20$/);
+  const h = harness([ITEM], [V({ importance: 3 })]);
+  h.store.news = prior([]);
+  const inner = h.deps.fetch;
+  h.deps.fetch = async (url, init) => url === "https://s.test/research.json" ? { ok: true, json: async () => RESEARCH } : inner(url, init);
+  await runNews({ ...ENV, RESEARCH_URL: "https://s.test/research.json" }, h.deps);
+  assert.match(h.calls[0].messages[0].content, /Facts on file:\n- NVDA last filed quarter/);
+  assert.match(h.calls[0].system[0].text, /never present them as inside information/);
+});

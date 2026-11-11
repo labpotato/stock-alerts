@@ -234,6 +234,7 @@ Rules
 - importance: 5 = likely to move the name or the market several percent (earnings surprise, guidance change, major regulatory or legal action, a Fed decision, a large deal); 4 = clearly material; 3 = worth knowing today; 2 = minor; 1 = noise, opinion, a recap of a move that already happened, a listicle, a price-target shuffle with nothing new, or not about anything he holds or watches.
 - Be strict: he only wants major news. Most headlines are 1-3. Give 4 only if it is likely to move one of his names 3% or more, or the whole market 1% or more. Give 5 only for the few events a day that clearly will. A follow-up, analysis, lawsuit filing or opinion piece about a story already moving the stock is 3 at most.
 - send is true only for importance 4 or more.
+- "Facts on file" lines, when present, are the company's last filed quarter (SEC numbers) and recent Congress trade disclosures. Use one in the opinion only when it changes the reading (for example a guidance cut after a quarter of +60% revenue growth), and say it is the last filed quarter. Congress disclosures are weeks old and public: never present them as inside information.
 - repeat: true if this is the same event as one of the flashes already sent (listed in the message), even from a different outlet or a new angle. A repeat gets send false, unless it adds a major new fact (a number, a decision, an official confirmation): then repeat false and importance 5.
 - take: one sentence, at most 28 words, plain words. What happened, in effect.
 - opinion: your honest view in one or two sentences, at most 45 words. Be direct and take a side: is this a big deal or overblown, likely priced in already or not, a one-day story or one that changes the outlook. Say how confident you are when it is a judgement call. If the headline alone is too thin to judge, say so plainly instead of guessing. This is your reading of the news, not an order: do not tell him to buy or sell, because his own rules decide trades.
@@ -273,18 +274,33 @@ export const NEWS_SCHEMA = {
   additionalProperties: false,
 };
 
-export function newsParams(item, model, already = []) {
+const pct = (x) => (typeof x === "number" ? `${x >= 0 ? "+" : ""}${x.toFixed(0)}%` : "n/a");
+/** Short lines from docs/research.json for the tickers a headline touches. Public data only. */
+export function researchLines(research, tickers) {
+  if (!research || !tickers || !tickers.length) return [];
+  const out = [];
+  for (const f of research.fundamentals || []) {
+    if (!tickers.includes(f.ticker)) continue;
+    out.push(`${f.ticker} last filed quarter (to ${f.period_end}): revenue ${pct(f.revenue_growth_yoy)} and EPS ${pct(f.eps_growth_yoy)} vs a year earlier, net margin ${typeof f.net_margin === "number" ? f.net_margin.toFixed(0) + "%" : "n/a"}`);
+  }
+  for (const c of (research.congress || []).filter((c) => tickers.includes(c.ticker)).slice(0, 3)) {
+    out.push(`Congress: ${c.member} (${c.owner || "self"}) ${c.action} ${c.ticker} ${c.amount} on ${c.date}, disclosed ${c.filed}`);
+  }
+  return out.slice(0, 6);
+}
+
+export function newsParams(item, model, already = [], facts = []) {
   return {
     model: model || NEWS_MODEL,
     max_tokens: 2000,
     system: [{ type: "text", text: NEWS_SYSTEM, cache_control: { type: "ephemeral" } }],
     output_config: { effort: "low", format: { type: "json_schema", schema: NEWS_SCHEMA } },
-    messages: [{ role: "user", content: `Source: ${item.source || "unknown"}\nHeadline: ${item.title}\nHis tickers matched by keyword: ${item.tickers.join(", ") || "none (macro)"}\nFlashes already sent in the last ${STORY_HOURS} hours:${already.length ? "\n" + already.map((x) => "- " + x).join("\n") : " none"}` }],
+    messages: [{ role: "user", content: `Source: ${item.source || "unknown"}\nHeadline: ${item.title}\nHis tickers matched by keyword: ${item.tickers.join(", ") || "none (macro)"}\nFlashes already sent in the last ${STORY_HOURS} hours:${already.length ? "\n" + already.map((x) => "- " + x).join("\n") : " none"}${facts.length ? "\nFacts on file:\n" + facts.map((x) => "- " + x).join("\n") : ""}` }],
   };
 }
 
-export async function judge(client, item, model, already) {
-  const params = newsParams(item, model, already);
+export async function judge(client, item, model, already, facts) {
+  const params = newsParams(item, model, already, facts);
   const opts = { timeout: 20000, maxRetries: 0 };
   // Opus, Sonnet and Fable can decline a request; the server-side fallback re-runs it. Haiku has none.
   const res = /haiku/.test(params.model)
@@ -353,7 +369,7 @@ export async function runNews(env, deps) {
   if (first) {
     cands.forEach(mark);                          // first run: learn what is already out, send nothing
   } else {
-    let status = null;
+    let status = null, research;
     for (const c of cands) {
       if (sent.length >= MAX_PER_RUN || st.count >= (Number(env.NEWS_MAX_PER_DAY) || MAX_PER_DAY)) break;
       mark(c);
@@ -361,7 +377,13 @@ export async function runNews(env, deps) {
       if (lately.some((r) => similar(r.title, c.title))) continue;   // same story, other outlet: no Claude call
       st.count += 1;                              // counts Claude calls, so the day's cost is capped
       let j = null;
-      try { j = await judge(client, c, env.NEWS_MODEL, lately.slice(0, 8).map((r) => r.title)); } catch (e) { console.log("news judge error:", e && e.name, e && e.status); }
+      if (research === undefined) {
+        research = null;
+        if (env.RESEARCH_URL) {
+          try { const r = await doFetch(env.RESEARCH_URL); research = r.ok ? await r.json() : null; } catch { research = null; }
+        }
+      }
+      try { j = await judge(client, c, env.NEWS_MODEL, lately.slice(0, 8).map((r) => r.title), researchLines(research, c.tickers)); } catch (e) { console.log("news judge error:", e && e.name, e && e.status); }
       const minImp = Number(env.NEWS_MIN_IMPORTANCE) || MIN_IMPORTANCE;
       if (!j || !j.send || j.repeat || j.importance < minImp) continue;
       const names = (j.primary || []).map((x) => asHit(x).name);

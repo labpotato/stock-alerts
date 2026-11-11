@@ -1,0 +1,42 @@
+name: research
+# Once a day after the US close: the last filed quarter for each single stock (SEC XBRL)
+# and new House trade disclosures in the watched tickers, into docs/research.json.
+# Tools: day-trader-skill's trader-analyst and trader-pelosi, vendored in .claude/skills (MIT).
+on:
+  schedule:
+    - cron: '41 22 * * 1-5'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stock-alerts
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.12'}
+      - name: pdftotext, to read the House PDFs
+        run: sudo apt-get install -y -qq poppler-utils >/dev/null
+      - run: python tools/research.py
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      - name: Commit
+        run: |
+          git config user.name "stock-alerts-bot"
+          git config user.email "stock-alerts-bot@users.noreply.github.com"
+          rm -rf research_state/ptr-pdfs
+          git add -A docs/research.json research_state 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -q -m "research $(date -u +%F)"
+          for i in 1 2 3 4; do
+            git pull --rebase -q origin main && git push -q && exit 0
+            sleep $((i * 5))
+          done
+          exit 1

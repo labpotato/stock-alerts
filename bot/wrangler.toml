@@ -17,3 +17,4 @@ crons = ["* * * * *"]
 GH_REPO = "labpotato/stock-alerts"
 HOLDINGS_REPO = "labpotato/portfolio-private"
 STATUS_URL = "https://raw.githubusercontent.com/labpotato/stock-alerts/main/docs/status.json"
+RESEARCH_URL = "https://raw.githubusercontent.com/labpotato/stock-alerts/main/docs/research.json"
