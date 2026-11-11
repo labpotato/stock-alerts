@@ -3,6 +3,8 @@ own past year on the chart, the chances in the message, and the signal's real re
 import os
 import random
 
+import pytest
+
 import odds as OD
 from conftest import et
 
@@ -49,7 +51,9 @@ def test_a_signal_message_carries_the_odds_and_the_chart_draws_the_fan(make_watc
     assert "⏳ <b>Time machine</b> (10,000 replays of BOTZ's own past year, next 20 sessions): ends higher in" in text
     assert "📜 <b>Its real record:</b>" in text
     assert "not a forecast" in text
-    import matplotlib
+    # The 10-minute alerter run skips this part (it installs matplotlib only when it draws);
+    # the tests workflow installs matplotlib, so every pull request checks the chart.
+    matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     w.mpl = lambda: plt
