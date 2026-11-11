@@ -102,16 +102,20 @@ watched tickers over the last 45 days. The news judge sees these lines for the t
 touches, so its honest view can weigh a headline against the last reported numbers. Congress
 disclosures arrive up to 45 days after the trade: public and old, not inside information.
 
-## Time-machine odds on signal charts (2026-11-11)
+## Time-machine range and signal record on charts (2026-11-11)
 
 Every signal alert (stocks, currencies and "close to a BUY") draws a fan to the right of today's price:
-10,000 replays of the next 20 sessions, each built from 5-day blocks of the ticker's own daily moves
-over the past year (`odds.py`, seed 19, so anyone can repeat it). The shaded bands hold 50% and 80% of
-the replays, the dashed line is the middle path, and the message gives the chance of ending higher, up
-5% or more, or down 5% or more. It also gives the signal's real record on that ticker in the past year:
-how often it fired and how often the price was higher 20 sessions later. The idea comes from
-day-trader-skill's `trader-timemachine`. It is a simulation from past moves, not a forecast: it cannot
-see earnings or news.
+10,000 replays of the next 20 sessions from 5-day blocks of the ticker's own past-year daily moves, with
+that year's trend removed (`odds.py`, seed 19). The bands hold 50% and 80% of the replays. For a stock
+signal the message also says what really followed that signal: the ticker's own record since its data
+begins when it has 10 or more fires, otherwise all 15 backtest tickers pooled (`odds_history.json`),
+next to the same numbers for an ordinary day. Currency alerts get the range only.
+
+Why it is built this way: `tools/odds_check.py` tested the first version out of sample (15 tickers,
+2004-2026, 11,241 forecasts each made only from the year before). The range held: the 80% band
+contained 79% of real outcomes and the 50% band 52% (only about 67-69% in 2007-08, 2018 and 2022). The
+"chance of ending higher" from replaying last year's trend predicted nothing (correlation 0.01) and, on
+signal days, leaned the wrong way, so it was removed. `tools/sig_record.py` rebuilds the record.
 
 ## Two kinds of signal
 
