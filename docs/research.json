@@ -1,0 +1,83 @@
+{
+ "as_of": "2026-11-11",
+ "fundamentals": [],
+ "congress": [
+  {
+   "member": "Hon. Maria Elvira Salazar",
+   "district": "FL27",
+   "ticker": "NVDA",
+   "action": "purchase",
+   "date": "2026-10-23",
+   "filed": "2026-11-05",
+   "amount": "$1,001 - $15,000",
+   "owner": "self",
+   "days_to_disclose": 13,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035778.pdf"
+  },
+  {
+   "member": "Hon. Daniel Meuser",
+   "district": "PA09",
+   "ticker": "NVDA",
+   "action": "partial sale",
+   "date": "2026-09-25",
+   "filed": "2026-11-05",
+   "amount": "$1,001 - $15,000",
+   "owner": "spouse",
+   "days_to_disclose": 41,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035662.pdf"
+  },
+  {
+   "member": "Hon. Pete Sessions",
+   "district": "TX17",
+   "ticker": "NVDA",
+   "action": "sale",
+   "date": "2026-10-02",
+   "filed": "2026-10-27",
+   "amount": "$15,001 - $50,000",
+   "owner": "spouse",
+   "days_to_disclose": 25,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035563.pdf"
+  },
+  {
+   "member": "Hon. Pete Sessions",
+   "district": "TX17",
+   "ticker": "TSLA",
+   "action": "sale",
+   "date": "2026-10-02",
+   "filed": "2026-10-27",
+   "amount": "$15,001 - $50,000",
+   "owner": "spouse",
+   "days_to_disclose": 25,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035563.pdf"
+  },
+  {
+   "member": "Cleo Fields",
+   "district": "LA06",
+   "ticker": "NVDA",
+   "action": "purchase",
+   "date": "2026-10-01",
+   "filed": "2026-10-22",
+   "amount": "$1,001 - $15,000",
+   "owner": "self",
+   "days_to_disclose": 21,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035669.pdf"
+  },
+  {
+   "member": "Hon. Daniel Meuser",
+   "district": "PA09",
+   "ticker": "NVDA",
+   "action": "partial sale",
+   "date": "2026-08-31",
+   "filed": "2026-10-14",
+   "amount": "$1,001 - $15,000",
+   "owner": "spouse",
+   "days_to_disclose": 44,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035487.pdf"
+  }
+ ],
+ "notes": {
+  "fundamentals": "skipped: SEC_USER_AGENT is not set",
+  "congress": "ok: 60 new filings read, 9 trades in watched tickers",
+  "source": "day-trader-skill trader-analyst and trader-pelosi (MIT); public SEC and House Clerk data. Congress trades are disclosed up to 45 days late: public and old, not inside information."
+ }
+}
