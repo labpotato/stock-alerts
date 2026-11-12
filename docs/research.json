@@ -1,7 +1,19 @@
 {
- "as_of": "2026-11-11",
+ "as_of": "2026-11-12",
  "fundamentals": [],
  "congress": [
+  {
+   "member": "Hon. Gilbert Cisneros",
+   "district": "CA31",
+   "ticker": "NVDA",
+   "action": "partial sale",
+   "date": "2026-10-20",
+   "filed": "2026-11-10",
+   "amount": "$1,001 - $15,000",
+   "owner": "self",
+   "days_to_disclose": 21,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035788.pdf"
+  },
   {
    "member": "Hon. Maria Elvira Salazar",
    "district": "FL27",
@@ -77,7 +89,7 @@
  ],
  "notes": {
   "fundamentals": "skipped: SEC_USER_AGENT is not set",
-  "congress": "ok: 60 new filings read, 9 trades in watched tickers",
+  "congress": "ok: 3 new filings read, 1 trades in watched tickers",
   "source": "day-trader-skill trader-analyst and trader-pelosi (MIT); public SEC and House Clerk data. Congress trades are disclosed up to 45 days late: public and old, not inside information."
  }
 }
