@@ -1,5 +1,5 @@
 {
- "as_of": "2026-11-12",
+ "as_of": "2026-11-13",
  "fundamentals": [],
  "congress": [
   {
@@ -89,7 +89,7 @@
  ],
  "notes": {
   "fundamentals": "skipped: SEC_USER_AGENT is not set",
-  "congress": "ok: 3 new filings read, 1 trades in watched tickers",
+  "congress": "ok: 2 new filings read, 0 trades in watched tickers",
   "source": "day-trader-skill trader-analyst and trader-pelosi (MIT); public SEC and House Clerk data. Congress trades are disclosed up to 45 days late: public and old, not inside information."
  }
 }
