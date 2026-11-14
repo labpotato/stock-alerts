@@ -1,7 +1,19 @@
 {
- "as_of": "2026-11-13",
+ "as_of": "2026-11-14",
  "fundamentals": [],
  "congress": [
+  {
+   "member": "Hon. David J. Taylor",
+   "district": "OH02",
+   "ticker": "GOOGL",
+   "action": "purchase",
+   "date": "2026-11-03",
+   "filed": "2026-11-12",
+   "amount": "$1,001 - $15,000",
+   "owner": "self",
+   "days_to_disclose": 9,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20035831.pdf"
+  },
   {
    "member": "Hon. Gilbert Cisneros",
    "district": "CA31",
@@ -89,7 +101,7 @@
  ],
  "notes": {
   "fundamentals": "skipped: SEC_USER_AGENT is not set",
-  "congress": "ok: 2 new filings read, 0 trades in watched tickers",
+  "congress": "ok: 1 new filings read, 2 trades in watched tickers",
   "source": "day-trader-skill trader-analyst and trader-pelosi (MIT); public SEC and House Clerk data. Congress trades are disclosed up to 45 days late: public and old, not inside information."
  }
 }
