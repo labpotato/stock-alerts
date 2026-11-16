@@ -129,6 +129,9 @@ def test_korean_listings_come_from_yahoos_quarterly_series_in_won():
     assert p["filed"] is None and abs(p["current"] - 2.5) < 1e-9
     assert abs(p["fcf_ps"] - 4 * 5e12 / 6.7e9) < 1e-6
     assert "Figures in KRW" in snap["text"] and "Source: Yahoo" in snap["text"]
+    ann = {"timeseries": {"result": [ts_rows("annualTotalRevenue", [300e12, 258e12]), ts_rows("annualDilutedEPS", [2131.0, 1393.0])]}}
+    lines = SN.annual_lines(ann, "KRW")
+    assert lines.startswith("Fiscal years (KRW), oldest first:") and "revenue 300.0T" in lines and "EPS 1,393.00" in lines
 
 
 def test_an_etf_is_read_as_a_basket_of_its_holdings():
@@ -146,6 +149,10 @@ def test_an_etf_is_read_as_a_basket_of_its_holdings():
     assert "P/E 31.20" in e["text"] and "3-year earnings growth: 24.0%" in e["text"] and "expense ratio 0.4%" in e["text"]
     q["topHoldings"]["equityHoldings"]["priceToEarnings"] = {"raw": 31.9}                 # daily noise: same hash
     assert S.etf_snapshot("SOXX", q)["hash"] == e["hash"]
+    # Yahoo's real fund ratios are reciprocals: VOO's 0.04131 is a P/E of 24.21, 0.1902 a P/B of 5.26.
+    q["topHoldings"]["equityHoldings"].update({"priceToEarnings": {"raw": 0.04131}, "priceToBook": {"raw": 0.1902}})
+    v = S.etf_snapshot("VOO", q)
+    assert v["ratios"]["priceToEarnings"] == 24.21 and v["ratios"]["priceToBook"] == 5.26
     assert S.etf_snapshot("X", {}) is None
 
 
