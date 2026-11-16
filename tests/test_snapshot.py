@@ -153,6 +153,8 @@ def test_an_etf_is_read_as_a_basket_of_its_holdings():
     q["topHoldings"]["equityHoldings"].update({"priceToEarnings": {"raw": 0.04131}, "priceToBook": {"raw": 0.1902}})
     v = S.etf_snapshot("VOO", q)
     assert v["ratios"]["priceToEarnings"] == 24.21 and v["ratios"]["priceToBook"] == 5.26
+    q["topHoldings"]["equityHoldings"]["priceToCashflow"] = {"raw": 0.0}                  # Yahoo's "no figure"
+    assert S.etf_snapshot("XLF", q)["ratios"]["priceToCashflow"] is None and "P/CF n/a" in S.etf_snapshot("XLF", q)["text"]
     assert S.etf_snapshot("X", {}) is None
 
 
