@@ -76,7 +76,13 @@
     "XLP": "Consumer Staples Select Sector SPDR ETF",
     "IQQ": "iShares Nasdaq 100 ETF",
     "DIA": "SPDR Dow Jones Industrial Average ETF",
-    "SGOV": "iShares 0-3 Month Treasury Bond ETF"
+    "SGOV": "iShares 0-3 Month Treasury Bond ETF",
+    "ITA": "iShares U.S. Aerospace & Defense ETF",
+    "SPCX": "Space Exploration Technologies Corp. (SpaceX)",
+    "005930.KS": "Samsung Electronics",
+    "000660.KS": "SK hynix",
+    "BTC-USD": "Bitcoin",
+    "ETH-USD": "Ethereum"
   },
   "_names_note": "Verified against Shibui general_info (IQQ, DIA, SGOV added 2026-11-05). ITA, ES3.SI and the Korean listings are not listed there, so their names are read live from Yahoo.",
   "near_pct": 5.0,

@@ -133,8 +133,10 @@ The Worker (`bot/src/panel.js`) gives each snapshot to the original's five inves
 prompts copied verbatim (`bot/src/personas.js`): Buffett, Munger, Graham, Lynch and Druckenmiller each
 answer bullish, neutral or bearish with a confidence and a reason. As in the original, a stock is only
 judged again when a new filing changes its numbers (or the price moves more than 15%), so most days
-cost nothing. New verdicts arrive in Telegram after the US close; `/panel` shows the grid, `/panel NVDA`
-the reasons, `/panel refresh` re-judges everything. `GET /panel` on the Worker serves the verdicts.
+cost nothing. New verdicts arrive in Telegram after the US close; `/panel` shows the grid (and judges any
+ticker that has data but no verdict yet), `/panel_nvda` (any ticker, dots and dashes as underscores) the
+reasons, `/panel refresh` re-judges everything. Telegram's "/" menu lists these, `/list` (the watchlist
+with prices, today's move and both measures) and `/mood`; the deploy rebuilds the menu from config.json. `GET /panel` on the Worker serves the verdicts.
 
 The original's post-earnings drift rule (PEAD) uses analyst-consensus beats and misses, which need paid
 estimates; this version reads the surprise from the market instead: the stock's move over the three

@@ -229,26 +229,44 @@ export async function runPanel(env, deps, opts = {}) {
   return { error: "panel did not finish" };
 }
 
-/** "/panel", "/panel NVDA", "/panel refresh": text replies for the bot. */
+/** The /panel_<slug> form: "005930.KS" -> "005930_ks". Same rule as tools/bot_commands.py. */
+export const slug = (t) => String(t).toLowerCase().replace(/[^a-z0-9]/g, "_");
+
+/** "/panel", "/panel NVDA", "/panel_nvda", "/panel refresh": text replies for the bot.
+ *  Tickers that have a snapshot but no verdict yet are judged on request (a ticker added to the
+ *  watchlist does not wait for the daily run). */
 export async function panelCommand(env, deps, arg) {
-  const a = String(arg || "").replace(/^@\S+/, "").trim().toUpperCase();
+  const raw = String(arg || "").replace(/^@\S+/, "").trim();
+  const a = raw.toUpperCase();
+  const queued = async () => { try { return JSON.parse((await deps.kv.get("panel_queue")) || "null"); } catch { return null; } };
   if (a === "REFRESH") {
     await enqueuePanel(env, deps, { force: true, summary: true });
     return ["🏛️ Judging every stock and ETF you watch now (five investors each, three tickers a minute). The panel arrives here in about 7 minutes."];
   }
   const st = await loadPanel(deps.kv);
-  if (a && st.stocks[a]) {
-    let snap = null;
-    try { const r = await deps.fetch(env.SNAP_URL); snap = r.ok ? ((await r.json()).stocks || {})[a] : null; } catch { snap = null; }
-    return [detailMessage(a, st.stocks[a], snap)];
+  let snaps = {};
+  try { const r = await deps.fetch(env.SNAP_URL); snaps = r.ok ? ((await r.json()).stocks || {}) : {}; } catch { snaps = {}; }
+  const known = [...new Set([...Object.keys(snaps), ...Object.keys(st.stocks)])];
+  const tk = a ? (known.find((t) => t === a) || known.find((t) => slug(t) === slug(raw))) : null;
+  if (a && !tk) {
+    const nc = (st.not_covered || {})[a] || Object.entries(st.not_covered || {}).find(([t]) => slug(t) === slug(raw));
+    if (nc) return [`🏛️ ${esc(a)} has no company financials (gold and coins), so the investor panel cannot judge it.`];
+    return [`🏛️ No panel for ${esc(a)}. The panel covers: ${known.join(", ") || "none yet"}.`];
   }
-  if (a) return [`🏛️ No panel verdict for ${esc(a)}. The panel covers: ${Object.keys(st.stocks).join(", ") || "none yet"}.`];
-  if (!Object.keys(st.stocks).length) {
-    let q = null;
-    try { q = JSON.parse((await deps.kv.get("panel_queue")) || "null"); } catch { q = null; }
-    if (q) return ["🏛️ The panel is being judged right now; it arrives here in a few minutes."];
-    await enqueuePanel(env, deps, { summary: true });
-    return ["🏛️ No verdicts yet, so I'm judging every stock and ETF you watch now. The panel arrives here in about 7 minutes."];
+  if (tk && st.stocks[tk]) return [detailMessage(tk, st.stocks[tk], snaps[tk])];
+  if (tk) {
+    if (!(await queued())) await enqueuePanel(env, deps, { only: [tk] });
+    return [`🏛️ ${esc(tk)} has no verdict yet. The five investors are judging it now; their reasons arrive here in about a minute.`];
   }
-  return [summaryMessage(st)];
+  const missing = Object.keys(snaps).filter((t) => !st.stocks[t]);
+  const out = [];
+  if (Object.keys(st.stocks).length) out.push(summaryMessage(st));
+  if (missing.length) {
+    if (!(await queued())) await enqueuePanel(env, deps, { only: missing, summary: true });
+    const mins = Math.max(1, Math.ceil(missing.length / PER_STEP));
+    out.push(`🏛️ ${missing.length} ticker${missing.length > 1 ? "s have" : " has"} no verdict yet (${esc(missing.join(", "))}). ` +
+      `Judging ${missing.length > 1 ? "them" : "it"} now; the full grid arrives here in about ${mins} minute${mins > 1 ? "s" : ""}.`);
+  }
+  if (!out.length) out.push(summaryMessage(st));
+  return out;
 }

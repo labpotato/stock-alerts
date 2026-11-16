@@ -83,7 +83,7 @@ test("/panel shows the grid, /panel NVDA the reasons, and many changes arrive as
   assert.match(sent[0], /Investor panel — NVDA/);
   assert.equal(h.tg.at(-1).parse_mode, "HTML");
   assert.match((await panelCommand(ENV, h.deps, ""))[0], /Reasons: \/panel NVDA/);
-  assert.match((await panelCommand(ENV, h.deps, "AAPL"))[0], /No panel verdict for AAPL/);
+  assert.match((await panelCommand(ENV, h.deps, "AAPL"))[0], /No panel for AAPL\. The panel covers: NVDA, TSLA, PLTR/);
   assert.match(summaryMessage({ stocks: {} }), /SEC_USER_AGENT/);
 });
 
@@ -106,12 +106,30 @@ test("/panel refresh answers at once and the cron judges two stocks a minute, sa
   assert.match((await panelCommand(ENV, h.deps, "@stock_alerts_bot"))[0], /Investor panel/);   // "/panel@bot" in groups
 });
 
-test("a plain /panel before any verdict starts the first panel instead of saying nothing", async () => {
+test("/panel judges tickers that have data but no verdict yet, instead of showing only the old ones", async () => {
   const h = harness({ stocks: { NVDA: SNAP() } });
-  assert.match((await panelCommand(ENV, h.deps, ""))[0], /judging every stock and ETF you watch now/);
-  assert.match((await panelCommand(ENV, h.deps, ""))[0], /being judged right now/);
+  await runPanel(ENV, h.deps, {});                                         // NVDA judged
+  h.set({ stocks: { NVDA: SNAP(), SOXX: SNAP("s"), "005930.KS": SNAP("k") } });  // two added to the watchlist
+  const out = await panelCommand(ENV, h.deps, "");
+  assert.match(out[0], /<b>NVDA<\/b>/);                                     // what is known now
+  assert.match(out[1], /2 tickers have no verdict yet \(SOXX, 005930\.KS\)\. Judging them now; the full grid arrives here in about 1 minute\./);
+  const before = h.calls.length;
+  const r = await stepPanel(ENV, h.deps);
+  assert.ok(r.done);
+  assert.equal(h.calls.length - before, 10);                               // only the two new ones, NVDA not re-judged
+  assert.match(h.tg.at(-1).text, /<b>005930\.KS<\/b>/);
+});
+
+test("/panel_nvda and /panel_005930_ks reach one ticker; a new one is judged on request", async () => {
+  const h = harness({ stocks: { NVDA: SNAP(), "005930.KS": SNAP("k") } });
+  await runPanel(ENV, h.deps, { only: ["NVDA"] });
+  const ask = (text) => answer(ENV, { message_id: 1, chat: { id: 111 }, text },
+    { client: h.deps.client, fetch: h.deps.fetch, panel: (a) => panelCommand(ENV, h.deps, a) });
+  assert.match((await ask("/panel_nvda"))[0], /Investor panel — NVDA/);
+  assert.match((await ask("/panel_005930_ks"))[0], /005930\.KS has no verdict yet\. The five investors are judging it now/);
   await stepPanel(ENV, h.deps);
-  assert.match(h.tg[0].text, /<b>NVDA<\/b>  B🟢/);
+  assert.match(h.tg.at(-1).text, /Investor panel — 005930\.KS/);
+  assert.match((await ask("/panel_gldm"))[0], /No panel for GLDM/);
 });
 
 test("ETFs are judged as a basket, Korean stocks in won, and gold and crypto are listed as not covered", async () => {
