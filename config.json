@@ -17,7 +17,10 @@
     "QQQ",
     "XLB",
     "XLP",
-    "IQQ"
+    "IQQ",
+    "SPCX",
+    "BTC-USD",
+    "ETH-USD"
   ],
   "ai_group": [
     "GOOGL",
@@ -140,7 +143,9 @@
   },
   "not_equity": [
     "GLDM",
-    "SGOV"
+    "SGOV",
+    "BTC-USD",
+    "ETH-USD"
   ],
   "_not_equity_note": "Not judged against the stock market for unusual moves (their own move only).",
   "evening_messages": false,
@@ -174,5 +179,6 @@
     ]
   },
   "holdings_repo": "labpotato/portfolio-private",
-  "_holdings_repo_note": "Private repo whose holdings.json (v2 shape) the post-close run keeps up to date. Read with the HOLDINGS_TOKEN secret (read-only). The newer of it and HOLDINGS_JSON, by as_of, is used."
+  "_holdings_repo_note": "Private repo whose holdings.json (v2 shape) the post-close run keeps up to date. Read with the HOLDINGS_TOKEN secret (read-only). The newer of it and HOLDINGS_JSON, by as_of, is used.",
+  "_crypto_note": "BTC-USD and ETH-USD (Dongmin 2026-11-16) trade around the clock, so they are read every run, weekends included, like the Asian listings; their unusual moves are judged on their own, not against the S&P 500. SPCX added the same day; its name is read live from Yahoo."
 }
