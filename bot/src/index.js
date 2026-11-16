@@ -1,6 +1,7 @@
 // Cloudflare Worker entry: Telegram sends each message here (webhook).
 import Anthropic from "@anthropic-ai/sdk";
-import { answer, dispatchAlerter, isAllowed } from "./bot.js";
+import { answer, dispatchAlerter, holdingsFor, isAllowed } from "./bot.js";
+import { buildList } from "./list.js";
 import { feedCheck, recentNews, runMood, runNews } from "./news.js";
 import { enqueuePanel, loadPanel, panelCommand, stepPanel } from "./panel.js";
 
@@ -41,7 +42,8 @@ export default {
     const doFetch = (u, o) => fetch(u, o);
     const mood = () => runMood(env, { fetch: doFetch, client, kv: env.NEWS_KV }, true);
     const panel = (arg) => panelCommand(env, { fetch: doFetch, client, kv: env.NEWS_KV }, arg);
-    ctx.waitUntil(answer(env, update.message, { client, fetch: doFetch, mood, panel }));
+    const list = () => buildList(env, doFetch, holdingsFor);
+    ctx.waitUntil(answer(env, update.message, { client, fetch: doFetch, mood, panel, list }));
     return new Response("ok");
   },
 
