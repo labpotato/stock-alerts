@@ -118,6 +118,30 @@ contained 79% of real outcomes and the 50% band 52% (only about 67-69% in 2007-0
 "chance of ending higher" from replaying last year's trend predicted nothing (correlation 0.01) and, on
 signal days, leaned the wrong way, so it was removed. `tools/sig_record.py` rebuilds the record.
 
+## Investor panel from ai-hedge-fund (2026-11-16)
+
+A free port of [ai-hedge-fund](https://github.com/virattt/ai-hedge-fund) (MIT). The original buys its
+data from Financial Datasets; here `tools/snapshot.py` (in the daily research job) builds the same
+"fundamentals snapshot" for NVDA, GOOGL, TSLA, PLTR and BE from SEC filings and Yahoo closes: up to
+eight trailing-twelve-month periods with market cap, P/E, ROE, margins, liabilities/equity, current
+ratio, revenue growth, EPS, book value and free cash flow per share (`docs/snapshots.json`).
+
+The Worker (`bot/src/panel.js`) gives each snapshot to the original's five investor personas, their
+prompts copied verbatim (`bot/src/personas.js`): Buffett, Munger, Graham, Lynch and Druckenmiller each
+answer bullish, neutral or bearish with a confidence and a reason. As in the original, a stock is only
+judged again when a new filing changes its numbers (or the price moves more than 15%), so most days
+cost nothing. New verdicts arrive in Telegram after the US close; `/panel` shows the grid, `/panel NVDA`
+the reasons, `/panel refresh` re-judges everything. `GET /panel` on the Worker serves the verdicts.
+
+The original's post-earnings drift rule (PEAD) uses analyst-consensus beats and misses, which need paid
+estimates; this version reads the surprise from the market instead: the stock's move over the three
+sessions around its earnings 8-K minus SPY's. A move of 2% or more either way sends one message with the
+drift direction for about 60 sessions.
+
+These are AI opinions in famous investors' styles, with no proven record: every verdict is stored with
+its price so the panel can be graded at each persona's horizon. They never change the rule signals.
+Needs the `SEC_USER_AGENT` secret ("Name email"), which the SEC requires.
+
 ## Two kinds of signal
 
 | | REAL-TIME alert | Evening check |

@@ -163,6 +163,7 @@ Examples:
 • What would fire if QQQ closed at 700?
 
 Send /mood for a quick read of what investors are saying right now.
+Send /panel for the investor panel (Buffett, Munger, Graham, Lynch, Druckenmiller styles), /panel NVDA for reasons.
 Tip: reply to one of my alerts to ask about that alert.
 I can't trade or change anything; I only answer.`;
 
@@ -187,6 +188,18 @@ export async function answer(env, msg, deps) {
   if (!question) return sent;
   if (/^\/(start|help)\b/i.test(question)) {
     await send(HELP);
+    return sent;
+  }
+  const m = question.match(/^\/panel\b\s*(\S*)/i);
+  if (m && deps.panel) {                               // the investor panel (ai-hedge-fund personas)
+    for (const text of await deps.panel(m[1])) {
+      sent.push(text);
+      await doFetch(`https://api.telegram.org/bot${env.TG_TOKEN}/sendMessage`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chat_id: msg.chat.id, text, parse_mode: "HTML", reply_parameters: { message_id: msg.message_id },
+                               link_preview_options: { is_disabled: true } }),
+      });
+    }
     return sent;
   }
   if (/^\/mood\b/i.test(question) && deps.mood) {      // the market-mood brief, on request
