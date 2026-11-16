@@ -2,7 +2,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { answer, dispatchAlerter, isAllowed } from "./bot.js";
 import { feedCheck, recentNews, runMood, runNews } from "./news.js";
-import { loadPanel, panelCommand, runPanel } from "./panel.js";
+import { enqueuePanel, loadPanel, panelCommand, stepPanel } from "./panel.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -58,8 +58,9 @@ export default {
       ctx.waitUntil(runMood(env, { fetch: doFetch, client, kv: env.NEWS_KV, now: () => controller.scheduledTime })
         .catch((e) => console.log("mood error:", e && e.message)));
       if (env.SNAP_URL && env.PANEL !== "off") {
-        ctx.waitUntil(runPanel(env, { fetch: doFetch, client, kv: env.NEWS_KV, now: () => controller.scheduledTime }, { slot: true })
-          .then((r) => { if (r.changed && (r.changed.length || r.drifts.length)) console.log("panel:", JSON.stringify(r.changed), JSON.stringify(r.drifts)); })
+        const pdeps = { fetch: doFetch, client, kv: env.NEWS_KV, now: () => controller.scheduledTime };
+        ctx.waitUntil(enqueuePanel(env, pdeps, { slot: true }).then(() => stepPanel(env, pdeps))
+          .then((r) => { if (r && !r.idle) console.log("panel:", JSON.stringify(r).slice(0, 300)); })
           .catch((e) => console.log("panel error:", e && e.message)));
       }
     }
