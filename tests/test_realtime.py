@@ -119,3 +119,14 @@ def test_evening_check_writes_the_settled_block_but_sends_nothing(make_watch):
     w.evening(state)
     assert w.SENT == []
     assert w.read_status()["settled"]["tickers"]["BOTZ"]["k_state"] == "BUY"
+
+
+def test_crypto_is_read_around_the_clock():
+    """BTC-USD and ETH-USD (Dongmin 2026-11-16) have their own always-open market, not the US session."""
+    import watch as w
+    assert w.market("BTC-USD") == "crypto" and w.market("ETH-USD") == "crypto"
+    assert w.market("SPCX") == "us"
+    import json, os
+    cfg = json.load(open(os.path.join(os.path.dirname(__file__), "..", "config.json")))
+    assert {"SPCX", "BTC-USD", "ETH-USD"} <= set(cfg["tickers"])
+    assert {"BTC-USD", "ETH-USD"} <= set(cfg["not_equity"])

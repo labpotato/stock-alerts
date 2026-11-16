@@ -181,6 +181,8 @@ def market(t):
         return "sg"
     if t.endswith(".KS"):
         return "kr"
+    if t.endswith("-USD"):
+        return "crypto"            # BTC-USD, ETH-USD: around the clock, weekends included
     return "us"
 
 
@@ -1430,12 +1432,12 @@ def poll(state):
         state["fx_version"] = 2
     want_list = MODE in ("digest", "buy-watch")   # only when you ask for it
     # Stocks follow the US session; currencies trade almost around the clock on weekdays;
-    # optional SGX / KRX listings follow their own exchange's session.
+    # optional SGX / KRX listings follow their own exchange's session; crypto never closes.
     us_all = [t for t in universe() if market(t) == "us"]
     stocks = us_all if (sess != "CLOSED" or want_list) else []
     fxs = list(FX) if (fx_open() or want_list) else []
     own, own_live = [], {}
-    for t in [t for t in universe() if market(t) in ("sg", "kr")]:
+    for t in [t for t in universe() if market(t) in ("sg", "kr", "crypto")]:
         try:
             lv = live(t)
             if lv["sess"] != "CLOSED" or want_list:
