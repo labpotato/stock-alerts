@@ -406,7 +406,7 @@ def etf_snapshot(t, q):
     # Yahoo's fund "price to X" fields are reciprocals (earnings per $ of price): VOO's 0.041 is a P/E of ~24.
     for k in ("priceToEarnings", "priceToBook", "priceToSales", "priceToCashflow"):
         v = ratios[k]
-        ratios[k] = round(1 / v, 2) if v and 0 < v < 1 else v
+        ratios[k] = None if not v else (round(1 / v, 2) if 0 < v < 1 else v)   # 0 means Yahoo has no figure
     if not hold and not any(ratios.values()):
         return None
     fee = _raw(((fp.get("feesExpensesInvestment") or {}).get("annualReportExpenseRatio")))
