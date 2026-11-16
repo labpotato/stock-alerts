@@ -25,9 +25,14 @@ const big = (v) => v == null ? "n/a" : Math.abs(v) >= 1e12 ? `$${(v / 1e12).toFi
 
 /** The prompt: the original's snapshot text, plus the latest close (the original's live runs add the day's context). */
 export function personaUser(s) {
+  if (s.kind === "etf") {
+    return `${s.text}\n\nLatest close: $${Number(s.price).toFixed(2)} on ${s.price_date}.`;
+  }
   const pe = s.pe_now == null ? "n/a (no profit over the last year)" : s.pe_now.toFixed(1);
-  return `${s.text}\n\nLatest close (after the newest filing): $${Number(s.price).toFixed(2)} on ${s.price_date}. ` +
-    `Market cap at that price: ${big(s.market_cap_now)}. P/E at that price: ${pe}.`;
+  const cur = s.currency && s.currency !== "USD" ? s.currency + " " : "$";
+  const cap = s.currency && s.currency !== "USD" ? `${s.currency} ${(s.market_cap_now / 1e12).toFixed(1)} trillion` : big(s.market_cap_now);
+  return `${s.text}\n\nLatest close (after the newest filing): ${cur}${Number(s.price).toFixed(2)} on ${s.price_date}. ` +
+    `Market cap at that price: ${cap}. P/E at that price: ${pe}.`;
 }
 
 export function panelParams(name, s, model) {
@@ -72,8 +77,10 @@ export function panelSlot(t, times = PANEL_TIMES) {
 export function detailMessage(t, e, s) {
   const c = consensus(e.verdicts);
   const p = (s && s.periods && s.periods[0]) || {};
+  const basis = e.kind === "etf" || (s && s.kind === "etf") ? "read as a basket of its holdings"
+    : `latest quarter to ${esc(p.period || "?")}`;
   const lines = [`🏛️ <b>Investor panel — ${esc(t)}</b>${e.name ? " · " + esc(e.name) : ""}`,
-    `Judged ${esc(e.at)} at $${Number(e.price).toFixed(2)} · latest filed quarter to ${esc(p.period || "?")}`, ""];
+    `Judged ${esc(e.at)} at ${Number(e.price).toFixed(2)} · ${basis}`, ""];
   for (const n of Object.keys(PERSONAS)) {
     const v = e.verdicts[n];
     if (!v) continue;
@@ -96,7 +103,9 @@ export function summaryMessage(st, only) {
     const dots = Object.keys(PERSONAS).map((n) => `${NAMES[n][0]}${e.verdicts[n] ? (e.verdicts[n].abstained ? "▫️" : DOT[e.verdicts[n].signal]) : "·"}`).join(" ");
     lines.push(`<b>${esc(t)}</b>  ${dots}  → ${c.label} (${c.score >= 0 ? "+" : ""}${c.score})`);
   }
-  lines.push("", "Reasons: /panel NVDA (any ticker). Fresh verdicts on demand: /panel refresh.",
+  const nc = Object.entries(st.not_covered || {});
+  if (nc.length && !only) lines.push("", `Not covered: ${nc.map(([t, why]) => `${esc(t)} (${esc(why.split(":")[0])})`).join(", ")}: no company financials to judge.`);
+  lines.push("", "Reasons: /panel NVDA (any ticker). Fresh verdicts on demand: /panel refresh. ETFs are judged as a basket of their holdings.",
     "<i>AI opinions in famous investors' styles, from SEC filings; no proven record yet. Never an order.</i>");
   return lines.join("\n");
 }
@@ -129,7 +138,7 @@ export async function loadPanel(kv) {
 // The work runs in the every-minute cron, at most PER_STEP stocks a minute, saving after each stock:
 // a Telegram webhook only gets about 30 seconds after its reply, and one cron run shares a limit of
 // 50 outside requests with the news check, so 25 model calls cannot happen in one go.
-export const PER_STEP = 2;
+export const PER_STEP = 3;
 
 /** Queue a panel run. opts: { force: re-judge every stock, slot: only at the daily slot, only: [tickers] }. */
 export async function enqueuePanel(env, deps, opts = {}) {
@@ -176,7 +185,7 @@ export async function stepPanel(env, deps) {
     const names = Object.keys(PERSONAS);
     const got = await Promise.all(names.map((n) => ask(client, n, s, env.PANEL_MODEL)));
     const verdicts = Object.fromEntries(names.map((n, i) => [n, got[i]]));
-    st.stocks[tk] = { name: s.name, hash: s.hash, price: s.price, price_date: s.price_date, at: day, verdicts,
+    st.stocks[tk] = { name: s.name, kind: s.kind || "company", hash: s.hash, price: s.price, price_date: s.price_date, at: day, verdicts,
                       why: !old ? "first" : old.hash !== s.hash ? "new filing" : moved ? "price moved" : "asked" };
     st.history = (st.history || []).concat([{ t: tk, at: day, price: s.price,
       v: Object.fromEntries(names.map((n) => [n, [verdicts[n].signal, verdicts[n].confidence]])) }]).slice(-400);
@@ -185,6 +194,7 @@ export async function stepPanel(env, deps) {
     st.as_of = snaps.as_of;
     await kv.put("panel", JSON.stringify(st));                            // saved stock by stock
   }
+  st.not_covered = snaps.not_covered || {};
   if (q.todo.length) {
     await kv.put("panel_queue", JSON.stringify(q));
     return { progress: q.changed.length, left: q.todo.length };
@@ -224,7 +234,7 @@ export async function panelCommand(env, deps, arg) {
   const a = String(arg || "").replace(/^@\S+/, "").trim().toUpperCase();
   if (a === "REFRESH") {
     await enqueuePanel(env, deps, { force: true, summary: true });
-    return ["🏛️ Judging all five stocks now (25 short model calls, two stocks a minute). The panel arrives here in about 3 minutes."];
+    return ["🏛️ Judging every stock and ETF you watch now (five investors each, three tickers a minute). The panel arrives here in about 7 minutes."];
   }
   const st = await loadPanel(deps.kv);
   if (a && st.stocks[a]) {
@@ -238,7 +248,7 @@ export async function panelCommand(env, deps, arg) {
     try { q = JSON.parse((await deps.kv.get("panel_queue")) || "null"); } catch { q = null; }
     if (q) return ["🏛️ The panel is being judged right now; it arrives here in a few minutes."];
     await enqueuePanel(env, deps, { summary: true });
-    return ["🏛️ No verdicts yet, so I'm judging all five stocks now. The panel arrives here in about 3 minutes."];
+    return ["🏛️ No verdicts yet, so I'm judging every stock and ETF you watch now. The panel arrives here in about 7 minutes."];
   }
   return [summaryMessage(st)];
 }

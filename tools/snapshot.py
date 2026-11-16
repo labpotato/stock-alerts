@@ -15,6 +15,8 @@ Writes docs/snapshots.json (public company data only, no holdings). Needs SEC_US
 Usage: python3 tools/snapshot.py [--offline DIR] [--today YYYY-MM-DD]
 """
 import argparse
+import http.cookiejar
+import math
 import datetime as dt
 import hashlib
 import json
@@ -29,7 +31,8 @@ sys.path.insert(0, os.path.join(ROOT, ".claude", "skills", "trader-analyst"))
 import facts as FA  # noqa: E402  (day-trader-skill's SEC reader, MIT)
 
 OUT = os.path.join(ROOT, "docs", "snapshots.json")
-STOCKS = ["NVDA", "GOOGL", "TSLA", "PLTR", "BE"]
+CONFIG = os.path.join(ROOT, "config.json")
+NO_FUNDAMENTALS = {"GLDM": "gold", "SGOV": "Treasury bills", "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum"}
 N_PERIODS = 8
 DRIFT_MIN_PCT = 2.0        # abnormal 3-session reaction that counts as a clear surprise
 DRIFT_SESSIONS = 60        # the original's horizon (Bernard & Thomas: drift runs to about the next print)
@@ -157,6 +160,11 @@ def price_on(closes, day):
 
 
 def build(cf, closes, sector=None, ticker="", n=N_PERIODS):
+    """Company snapshot from SEC XBRL company facts."""
+    return build_series(xbrl_series(cf), closes, sector, ticker, n)
+
+
+def xbrl_series(cf):
     rev = flow_quarters(cf, "revenue")
     cost = flow_quarters(cf, "cost_of_revenue")
     gp = flow_quarters(cf, "gross_profit")
@@ -172,7 +180,15 @@ def build(cf, closes, sector=None, ticker="", n=N_PERIODS):
         if e not in li and e in eq:
             li[e] = le[e] - eq[e]
     ac, lc = instant(cf, INSTANTS["assets_cur"]), instant(cf, INSTANTS["liab_cur"])
-    filed = first_filed(cf)
+    return {"rev": rev, "gp": gp, "op": op, "ni": ni, "ocf": ocf, "capex": capex, "sh": sh,
+            "eq": eq, "li": li, "ac": ac, "lc": lc, "filed": first_filed(cf)}
+
+
+def build_series(S, closes, sector=None, ticker="", n=N_PERIODS, currency="USD", note=None):
+    """The original's FundamentalsSnapshot from quarterly series. S["filed"] maps a period end to its
+    filing date; without one (Yahoo data) the price ~45 days after the quarter end stands in."""
+    rev, gp, op, ni, ocf, capex, sh = (S[k] for k in ("rev", "gp", "op", "ni", "ocf", "capex", "sh"))
+    eq, li, ac, lc, filed = (S[k] for k in ("eq", "li", "ac", "lc", "filed"))
     div = lambda a, b: (a / b) if a is not None and b else None
     rows = []
     for e in sorted(rev, reverse=True):
@@ -183,7 +199,8 @@ def build(cf, closes, sector=None, ticker="", n=N_PERIODS):
         r_prev = ttm(rev, year_ago[0]) if year_ago else None
         o_t, c_t = ttm(ocf, e), ttm(capex, e)
         f_day = filed.get(e)
-        px = price_on(closes, f_day) if f_day else None
+        px_day = f_day or (_d(e) + dt.timedelta(days=45)).isoformat()
+        px = price_on(closes, px_day) if px_day <= (closes[-1][0] if closes else "") else (closes[-1][1] if closes else None)
         mcap = px * sh[e] if px else None
         rows.append({
             "period": e, "filed": f_day, "market_cap": mcap,
@@ -205,7 +222,7 @@ def build(cf, closes, sector=None, ticker="", n=N_PERIODS):
     years = (_d(rows[0]["period"]) - _d(rows[-1]["period"])).days / 365.25
     b0, b1 = rows[-1]["bvps"], rows[0]["bvps"]
     four = [r for r in rows if 350 <= (_d(rows[0]["period"]) - _d(r["period"])).days <= 380]
-    snap = {"ticker": ticker, "sector": sector, "periods": rows,
+    snap = {"ticker": ticker, "sector": sector, "periods": rows, "kind": "company", "currency": currency, "note": note,
             "roe_avg": avg(vals("roe")), "net_margin_avg": avg(vals("net_m")),
             "gross_margin_trend": (gm[0] - gm[-1]) if len(gm) > 1 else None,
             "bvps_cagr": ((b1 / b0) ** (1 / years) - 1) if b0 and b1 and b0 > 0 and b1 > 0 and years >= 0.9 else None,
@@ -228,9 +245,13 @@ def _fmt(v):
 
 
 def render(s):
-    lines = [f"Company: {s['ticker']}" + (f"  |  Sector: {s['sector']}" if s.get("sector") else ""),
+    lines = [f"Company: {s['ticker']}" + (f"  |  Sector: {s['sector']}" if s.get("sector") else "")
+             + (f"  |  Figures in {s['currency']}" if s.get("currency", "USD") != "USD" else ""),
              "All figures below were publicly filed by their filing dates. "
-             "Treat the most recent filing shown as the present.", "", "Summary:",
+             "Treat the most recent filing shown as the present."]
+    if s.get("note"):
+        lines.append(s["note"])
+    lines += ["", "Summary:",
              f"  Market cap (latest filed): {_fmt(s['market_cap_latest'])}",
              f"  ROE avg: {_fmt(s['roe_avg'])}  |  Net margin avg: {_fmt(s['net_margin_avg'])}",
              f"  Gross margin trend (latest-oldest): {_fmt(s['gross_margin_trend'])}",
@@ -276,6 +297,129 @@ def earnings_drift(submissions, closes, spy, today):
     return out
 
 
+# ---------------------------------------------------------------- Yahoo (non-SEC companies and ETFs)
+class Yahoo:
+    """Yahoo's free endpoints. The fund-holdings endpoint wants a session cookie and a 'crumb', fetched
+    once the way common Yahoo download tools do; the financial time series need neither."""
+    def __init__(self, offline=None):
+        self.offline, self.crumb = offline, None
+        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+
+    def get(self, url, name=None, raw=False):
+        if self.offline:
+            return json.load(open(os.path.join(self.offline, name)))
+        for i in range(3):
+            try:
+                with self.op.open(urllib.request.Request(url, headers=YAHOO_UA), timeout=30) as r:
+                    body = r.read().decode()
+                return body if raw else json.loads(body)
+            except Exception:
+                if i == 2:
+                    raise
+                time.sleep(2 + 3 * i)
+
+    def summary(self, t, modules):
+        if not self.offline and not self.crumb:
+            try:
+                self.op.open(urllib.request.Request("https://fc.yahoo.com", headers=YAHOO_UA), timeout=20)
+            except Exception:
+                pass                                   # it answers 404 but sets the cookie
+            self.crumb = self.get("https://query2.finance.yahoo.com/v1/test/getcrumb", raw=True).strip()
+        url = (f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{t}?modules={','.join(modules)}"
+               f"&crumb={urllib.request.quote(self.crumb or '')}")
+        return self.get(url, f"summary-{t}.json")["quoteSummary"]["result"][0]
+
+
+TS_TYPES = {"rev": "TotalRevenue", "gp": "GrossProfit", "op": "OperatingIncome", "ni": "NetIncomeCommonStockholders",
+            "sh": "DilutedAverageShares", "eq": "StockholdersEquity", "li": "TotalLiabilitiesNetMinorityInterest",
+            "ac": "CurrentAssets", "lc": "CurrentLiabilities", "ocf": "OperatingCashFlow", "capex": "CapitalExpenditure"}
+
+
+def yahoo_series(ts_json):
+    """Quarterly series from Yahoo's fundamentals time series. Capital expenditure comes negative there."""
+    S = {k: {} for k in TS_TYPES}
+    S["filed"] = {}
+    by_type = {}
+    for res in (ts_json.get("timeseries") or {}).get("result") or []:
+        typ = ((res.get("meta") or {}).get("type") or [""])[0]
+        by_type[typ] = res.get(typ) or []
+    for k, name in TS_TYPES.items():
+        for row in by_type.get("quarterly" + name, []):
+            if row and row.get("reportedValue") and row.get("periodType") == "3M":
+                v = row["reportedValue"]["raw"]
+                S[k][row["asOfDate"]] = -v if k == "capex" else v
+    if not S["ni"]:
+        for row in by_type.get("quarterlyNetIncome", []):
+            if row and row.get("reportedValue"):
+                S["ni"][row["asOfDate"]] = row["reportedValue"]["raw"]
+    return S
+
+
+def yahoo_company(t, Y, closes, today):
+    types = ",".join("quarterly" + v for v in list(TS_TYPES.values()) + ["NetIncome"])
+    p1 = int(time.mktime((_d(today) - dt.timedelta(days=6 * 365)).timetuple()))
+    js = Y.get(f"https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/{t}"
+               f"?type={types}&period1={p1}&period2={int(time.time()) + 86400}", f"timeseries-{t}.json")
+    cur = "KRW" if t.endswith(".KS") else "SGD" if t.endswith(".SI") else "USD"
+    return build_series(yahoo_series(js), closes, None, t, currency=cur,
+                        note="Source: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).")
+
+
+def _raw(x):
+    return x.get("raw") if isinstance(x, dict) else x
+
+
+def etf_snapshot(t, q):
+    """An ETF read as one business made of its holdings: top holdings, the holdings' valuation and
+    growth, sector mix, cost and track record (Yahoo topHoldings, fundProfile, defaultKeyStatistics)."""
+    th, fp, ks = q.get("topHoldings") or {}, q.get("fundProfile") or {}, q.get("defaultKeyStatistics") or {}
+    eh = th.get("equityHoldings") or {}
+    hold = [(h.get("symbol") or h.get("holdingName"), _raw(h.get("holdingPercent"))) for h in th.get("holdings") or []]
+    sect = sorted(((k, _raw(v)) for d in th.get("sectorWeightings") or [] for k, v in d.items()), key=lambda x: -(x[1] or 0))
+    ratios = {k: _raw(eh.get(k)) for k in ("priceToEarnings", "priceToBook", "priceToSales", "priceToCashflow",
+                                           "medianMarketCap", "threeYearEarningsGrowth")}
+    if not hold and not any(ratios.values()):
+        return None
+    fee = _raw(((fp.get("feesExpensesInvestment") or {}).get("annualReportExpenseRatio")))
+    pct = lambda v: "n/a" if v is None else f"{v * 100:.1f}%"
+    num = lambda v: "n/a" if v is None else (f"{v / 1e9:,.1f}B" if abs(v) >= 1e9 else f"{v:,.2f}")
+    lines = [f"Fund: {t}" + (f"  |  Category: {fp.get('categoryName')}" if fp.get("categoryName") else ""),
+             "This is an exchange-traded fund, not a single company. Judge it as one business made of its "
+             "holdings: the quality, growth and price of what it owns, and how concentrated it is.", "",
+             "Top holdings (share of the fund): " + ", ".join(f"{s} {pct(w)}" for s, w in hold[:10]),
+             f"Top 10 together: {pct(sum(w or 0 for _, w in hold[:10]))}",
+             "Holdings' valuation (fund-weighted): " + f"P/E {num(ratios['priceToEarnings'])} | P/B {num(ratios['priceToBook'])} | "
+             f"P/S {num(ratios['priceToSales'])} | P/CF {num(ratios['priceToCashflow'])} | "
+             f"median market cap {num(ratios['medianMarketCap'] * 1e6 if ratios['medianMarketCap'] else None)}",
+             f"Holdings' 3-year earnings growth: {pct(ratios['threeYearEarningsGrowth'])}",
+             "Sectors: " + ", ".join(f"{k} {pct(v)}" for k, v in sect[:5] if v),
+             f"Fund: expense ratio {pct(fee)}, total assets {num(_raw(ks.get('totalAssets')))}, "
+             f"3-year average return {pct(_raw(ks.get('threeYearAverageReturn')))}, 5-year {pct(_raw(ks.get('fiveYearAverageReturn')))}"]
+    text = "\n".join(lines)
+    # The hash ignores day-to-day ratio noise: holdings rounded to 1 point, P/E and growth to 5.
+    r5 = lambda v: None if v is None else int(round(v / 5.0))
+    key = json.dumps([[s, round((w or 0) * 100)] for s, w in hold[:10]] +
+                     [r5(ratios["priceToEarnings"]), r5((ratios["threeYearEarningsGrowth"] or 0) * 100)])
+    return {"ticker": t, "kind": "etf", "periods": [], "text": text, "hash": hashlib.sha256(key.encode()).hexdigest()[:16],
+            "holdings": hold[:10], "ratios": ratios, "pe_now": ratios["priceToEarnings"]}
+
+
+def panel_tickers():
+    """Every watched ticker the panel can judge, and the ones it cannot (with the reason)."""
+    c = json.load(open(CONFIG))
+    want = list(c["tickers"]) + [t for t in c.get("info_tickers", []) if t not in c["tickers"]]
+    fx = set((c.get("fx") or {}).keys())
+    out, skip = [], {}
+    for t in want:
+        if t in fx:
+            continue
+        if t in NO_FUNDAMENTALS:
+            skip[t] = f"{NO_FUNDAMENTALS[t]}: no company financials to judge"
+        else:
+            out.append(t)
+    return out, skip
+
+
 # ---------------------------------------------------------------- fetching
 def yahoo_closes(t, offline=None):
     if offline:
@@ -311,30 +455,50 @@ def main(argv=None):
         return 0
     fetch = FA.Fetcher(ua=ua, offline=a.offline)
     ciks = FA.ticker_ciks(fetch)
+    Y = Yahoo(a.offline)
     spy = yahoo_closes("SPY", a.offline)
-    out = {"as_of": today, "source": "SEC XBRL company facts + Yahoo daily closes; layout from ai-hedge-fund (MIT)",
-           "stocks": {}, "errors": {}}
-    for t in STOCKS:
+    tickers, skip = panel_tickers()
+    out = {"as_of": today, "source": "SEC XBRL company facts, Yahoo Finance closes, financial time series and fund "
+           "holdings; layout from ai-hedge-fund (MIT)", "stocks": {}, "errors": {}, "not_covered": skip}
+    for t in tickers:
         try:
-            cik, name = ciks[t]
-            cf = fetch.json(FA.FACTS_URL % cik, f"companyfacts-CIK{cik}.json")
-            sub = fetch.json(FA.SUBMISSIONS_URL % cik, f"submissions-CIK{cik}.json")
             closes = yahoo_closes(t, a.offline)
-            snap = build(cf, closes, sub.get("sicDescription"), t)
+            snap, cf = None, None
+            if t in ciks:                                   # US-listed: SEC filings first
+                try:                                        # (some ETF trusts are listed too, without statements)
+                    cik, name = ciks[t]
+                    cf = fetch.json(FA.FACTS_URL % cik, f"companyfacts-CIK{cik}.json")
+                    sub = fetch.json(FA.SUBMISSIONS_URL % cik, f"submissions-CIK{cik}.json")
+                    snap = build(cf, closes, sub.get("sicDescription"), t)
+                    if snap:
+                        snap["name"] = name
+                        snap["drift"] = earnings_drift(sub, closes, spy, today)
+                except (FA.FactsError, KeyError, ValueError):
+                    snap = None
+            if snap is None and (t.endswith(".KS") or t.endswith(".SI") or t in ciks):
+                try:                                        # Korean / Singapore listings, or SEC data too thin (new listings)
+                    snap = yahoo_company(t, Y, closes, today)
+                except Exception:
+                    snap = None
+            if snap is None:
+                q = Y.summary(t, ["topHoldings", "fundProfile", "defaultKeyStatistics", "price"])
+                snap = etf_snapshot(t, q)
+                if snap:
+                    snap["name"] = ((q.get("price") or {}).get("longName")) or t
             if not snap:
-                raise ValueError("not enough filed quarters")
-            snap["name"] = name
+                raise ValueError("no company financials or fund holdings found")
+            snap.setdefault("name", t)
             snap["price"] = closes[-1][1]
             snap["price_date"] = closes[-1][0]
-            last = snap["periods"][0]
-            snap["market_cap_now"] = closes[-1][1] * last["shares"]
-            snap["pe_now"] = snap["market_cap_now"] / last["net_income_ttm"] if last["net_income_ttm"] > 0 else None
-            snap["drift"] = earnings_drift(sub, closes, spy, today)
+            if snap["kind"] == "company":
+                last = snap["periods"][0]
+                snap["market_cap_now"] = closes[-1][1] * last["shares"]
+                snap["pe_now"] = snap["market_cap_now"] / last["net_income_ttm"] if last["net_income_ttm"] > 0 else None
             out["stocks"][t] = snap
-        except Exception as e:  # one company's odd filing must not stop the others
+        except Exception as e:  # one odd ticker must not stop the others
             out["errors"][t] = f"{type(e).__name__}: {e}"[:200]
     json.dump(out, open(OUT, "w"), indent=1)
-    print(json.dumps({"stocks": list(out["stocks"]), "errors": out["errors"]}))
+    print(json.dumps({"stocks": list(out["stocks"]), "errors": out["errors"], "not_covered": list(skip)}))
     return 0
 
 
