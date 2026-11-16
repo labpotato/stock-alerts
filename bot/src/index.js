@@ -2,6 +2,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { answer, dispatchAlerter, isAllowed } from "./bot.js";
 import { feedCheck, recentNews, runMood, runNews } from "./news.js";
+import { loadPanel, panelCommand, runPanel } from "./panel.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -15,6 +16,13 @@ export default {
       // Which public feeds answer from here (for checking after a deploy).
       return new Response(JSON.stringify(await feedCheck((u, o) => fetch(u, o), Date.now()), null, 1), {
         headers: { "content-type": "application/json", "cache-control": "max-age=120" },
+      });
+    }
+    if (request.method === "GET" && new URL(request.url).pathname === "/panel") {
+      // The investor panel's verdicts (public companies only, no holdings), for the dashboard and the post-close run.
+      const st = env.NEWS_KV ? await loadPanel(env.NEWS_KV) : {};
+      return new Response(JSON.stringify({ as_of: st.as_of, stocks: st.stocks || {} }), {
+        headers: { "content-type": "application/json", "access-control-allow-origin": "*", "cache-control": "max-age=300" },
       });
     }
     if (request.method !== "POST") return new Response("ok");
@@ -32,7 +40,8 @@ export default {
     // Reply to Telegram at once so it never re-sends the message; answer in the background.
     const doFetch = (u, o) => fetch(u, o);
     const mood = () => runMood(env, { fetch: doFetch, client, kv: env.NEWS_KV }, true);
-    ctx.waitUntil(answer(env, update.message, { client, fetch: doFetch, mood }));
+    const panel = (arg) => panelCommand(env, { fetch: doFetch, client, kv: env.NEWS_KV }, arg);
+    ctx.waitUntil(answer(env, update.message, { client, fetch: doFetch, mood, panel }));
     return new Response("ok");
   },
 
@@ -48,6 +57,11 @@ export default {
         .catch((e) => console.log("news error:", e && e.message)));
       ctx.waitUntil(runMood(env, { fetch: doFetch, client, kv: env.NEWS_KV, now: () => controller.scheduledTime })
         .catch((e) => console.log("mood error:", e && e.message)));
+      if (env.SNAP_URL && env.PANEL !== "off") {
+        ctx.waitUntil(runPanel(env, { fetch: doFetch, client, kv: env.NEWS_KV, now: () => controller.scheduledTime }, { slot: true })
+          .then((r) => { if (r.changed && (r.changed.length || r.drifts.length)) console.log("panel:", JSON.stringify(r.changed), JSON.stringify(r.drifts)); })
+          .catch((e) => console.log("panel error:", e && e.message)));
+      }
     }
   },
 };

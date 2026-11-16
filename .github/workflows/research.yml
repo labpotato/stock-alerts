@@ -27,12 +27,16 @@ jobs:
       - run: python tools/research.py
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+      - name: Fundamentals snapshots for the investor panel (ai-hedge-fund port)
+        run: python tools/snapshot.py
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
       - name: Commit
         run: |
           git config user.name "stock-alerts-bot"
           git config user.email "stock-alerts-bot@users.noreply.github.com"
           rm -rf research_state/ptr-pdfs
-          git add -A docs/research.json research_state 2>/dev/null || true
+          git add -A docs/research.json docs/snapshots.json research_state 2>/dev/null || true
           git diff --cached --quiet && exit 0
           git commit -q -m "research $(date -u +%F)"
           for i in 1 2 3 4; do
