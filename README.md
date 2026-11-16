@@ -122,7 +122,10 @@ signal days, leaned the wrong way, so it was removed. `tools/sig_record.py` rebu
 
 A free port of [ai-hedge-fund](https://github.com/virattt/ai-hedge-fund) (MIT). The original buys its
 data from Financial Datasets; here `tools/snapshot.py` (in the daily research job) builds the same
-"fundamentals snapshot" for NVDA, GOOGL, TSLA, PLTR and BE from SEC filings and Yahoo closes: up to
+"fundamentals snapshot" for every watched ticker: US companies from SEC filings, Samsung and SK hynix
+(and new listings with too few SEC quarters) from Yahoo's quarterly figures, and ETFs as a basket of
+their holdings (Yahoo fund holdings, valuation and growth). Gold, Bitcoin and Ethereum have no company
+financials and are listed as not covered. Each company snapshot has up to
 eight trailing-twelve-month periods with market cap, P/E, ROE, margins, liabilities/equity, current
 ratio, revenue growth, EPS, book value and free cash flow per share (`docs/snapshots.json`).
 

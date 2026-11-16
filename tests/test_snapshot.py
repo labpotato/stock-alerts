@@ -95,3 +95,62 @@ def test_earnings_drift_reads_the_markets_reaction_to_the_8k():
     assert S.earnings_drift(sub, stock[:3], spy[:3], "2026-11-05")["status"].startswith("waiting")
     flat = S.earnings_drift(sub, [(x, 100.0) for x, _ in stock], spy, "2026-11-09")
     assert flat["view"] == "none"
+
+
+def ts_rows(name, values, start="2024-03-31"):
+    ends = []
+    d = dt.date.fromisoformat(start)
+    for i in range(len(values)):
+        y, m = d.year + (d.month - 1 + 3 * i) // 12, (d.month - 1 + 3 * i) % 12 + 1
+        last = (dt.date(y + (m == 12), m % 12 + 1, 1) - dt.timedelta(days=1)).isoformat()
+        ends.append(last)
+    return {"meta": {"type": [name]}, name: [{"asOfDate": e, "periodType": "3M", "currencyCode": "KRW",
+                                               "reportedValue": {"raw": v}} for e, v in zip(ends, values)]}
+
+
+def test_korean_listings_come_from_yahoos_quarterly_series_in_won():
+    n = 9
+    js = {"timeseries": {"result": [
+        ts_rows("quarterlyTotalRevenue", [70e12 + 5e12 * i for i in range(n)]),
+        ts_rows("quarterlyGrossProfit", [28e12 + 2e12 * i for i in range(n)]),
+        ts_rows("quarterlyOperatingIncome", [8e12 + 1e12 * i for i in range(n)]),
+        ts_rows("quarterlyNetIncomeCommonStockholders", [6e12 + 1e12 * i for i in range(n)]),
+        ts_rows("quarterlyDilutedAverageShares", [6.7e9] * n),
+        ts_rows("quarterlyStockholdersEquity", [400e12] * n),
+        ts_rows("quarterlyTotalLiabilitiesNetMinorityInterest", [100e12] * n),
+        ts_rows("quarterlyCurrentAssets", [200e12] * n), ts_rows("quarterlyCurrentLiabilities", [80e12] * n),
+        ts_rows("quarterlyOperatingCashFlow", [15e12] * n), ts_rows("quarterlyCapitalExpenditure", [-10e12] * n)]}}
+    import tools.snapshot as SN
+    series = SN.yahoo_series(js)
+    assert series["capex"]["2024-03-31"] == 10e12                      # Yahoo's negative capex turned positive
+    snap = SN.build_series(series, closes(px=100000.0), None, "005930.KS", currency="KRW", note="Source: Yahoo")
+    p = snap["periods"][0]
+    assert snap["kind"] == "company" and len(snap["periods"]) == 6 and p["period"] == "2026-03-31"
+    assert p["filed"] is None and abs(p["current"] - 2.5) < 1e-9
+    assert abs(p["fcf_ps"] - 4 * 5e12 / 6.7e9) < 1e-6
+    assert "Figures in KRW" in snap["text"] and "Source: Yahoo" in snap["text"]
+
+
+def test_an_etf_is_read_as_a_basket_of_its_holdings():
+    q = {"topHoldings": {"holdings": [{"symbol": "NVDA", "holdingName": "NVIDIA", "holdingPercent": {"raw": 0.091}},
+                                      {"symbol": "AVGO", "holdingPercent": {"raw": 0.085}}],
+                         "equityHoldings": {"priceToEarnings": {"raw": 31.2}, "priceToBook": {"raw": 7.1},
+                                            "threeYearEarningsGrowth": {"raw": 0.24}, "medianMarketCap": {"raw": 150000}},
+                         "sectorWeightings": [{"technology": {"raw": 0.97}}, {"industrials": {"raw": 0.02}}]},
+         "fundProfile": {"categoryName": "Technology", "feesExpensesInvestment": {"annualReportExpenseRatio": {"raw": 0.0035}}},
+         "defaultKeyStatistics": {"totalAssets": {"raw": 14e9}, "threeYearAverageReturn": {"raw": 0.21}}}
+    e = S.etf_snapshot("SOXX", q)
+    assert e["kind"] == "etf" and e["pe_now"] == 31.2
+    assert "This is an exchange-traded fund, not a single company" in e["text"]
+    assert "Top holdings (share of the fund): NVDA 9.1%, AVGO 8.5%" in e["text"]
+    assert "P/E 31.20" in e["text"] and "3-year earnings growth: 24.0%" in e["text"] and "expense ratio 0.4%" in e["text"]
+    q["topHoldings"]["equityHoldings"]["priceToEarnings"] = {"raw": 31.9}                 # daily noise: same hash
+    assert S.etf_snapshot("SOXX", q)["hash"] == e["hash"]
+    assert S.etf_snapshot("X", {}) is None
+
+
+def test_every_watched_ticker_is_covered_or_says_why_not():
+    tickers, skip = S.panel_tickers()
+    assert {"NVDA", "SPCX", "SOXX", "VOO", "005930.KS", "000660.KS"} <= set(tickers)
+    assert set(skip) >= {"GLDM", "BTC-USD", "ETH-USD"} and "gold" in skip["GLDM"]
+    assert not any(t.endswith("=X") for t in tickers)

@@ -91,14 +91,14 @@ test("/panel refresh answers at once and the cron judges two stocks a minute, sa
   const stocks = { NVDA: SNAP("a"), GOOGL: SNAP("b"), TSLA: SNAP("c"), PLTR: SNAP("d"), BE: SNAP("e") };
   const h = harness({ stocks });
   const reply = await panelCommand(ENV, h.deps, "refresh");
-  assert.match(reply[0], /Judging all five stocks now/);
+  assert.match(reply[0], /Judging every stock and ETF you watch now/);
   assert.equal(h.calls.length, 0);                                     // nothing heavy inside the webhook
   let r = await stepPanel(ENV, h.deps);
-  assert.equal(PER_STEP, 2);
-  assert.deepEqual([r.progress, r.left], [2, 3]);
-  assert.equal(h.calls.length, 10);
-  assert.equal(Object.keys(JSON.parse(h.store.panel).stocks).length, 2);   // already saved
-  r = await stepPanel(ENV, h.deps); r = await stepPanel(ENV, h.deps);
+  assert.equal(PER_STEP, 3);
+  assert.deepEqual([r.progress, r.left], [3, 2]);
+  assert.equal(h.calls.length, 15);
+  assert.equal(Object.keys(JSON.parse(h.store.panel).stocks).length, 3);   // already saved
+  r = await stepPanel(ENV, h.deps);
   assert.ok(r.done);
   assert.equal(h.tg.length, 1);
   assert.match(h.tg[0].text, /<b>BE<\/b>/);
@@ -108,8 +108,20 @@ test("/panel refresh answers at once and the cron judges two stocks a minute, sa
 
 test("a plain /panel before any verdict starts the first panel instead of saying nothing", async () => {
   const h = harness({ stocks: { NVDA: SNAP() } });
-  assert.match((await panelCommand(ENV, h.deps, ""))[0], /judging all five stocks now/);
+  assert.match((await panelCommand(ENV, h.deps, ""))[0], /judging every stock and ETF you watch now/);
   assert.match((await panelCommand(ENV, h.deps, ""))[0], /being judged right now/);
   await stepPanel(ENV, h.deps);
   assert.match(h.tg[0].text, /<b>NVDA<\/b>  B🟢/);
+});
+
+test("ETFs are judged as a basket, Korean stocks in won, and gold and crypto are listed as not covered", async () => {
+  const etf = { name: "iShares Semiconductor ETF", kind: "etf", hash: "e", price: 154.3, price_date: "2026-11-13",
+                text: "Fund: SOXX\nThis is an exchange-traded fund, not a single company.", periods: [] };
+  const kr = { ...SNAP("k", 98000), name: "Samsung Electronics", currency: "KRW", market_cap_now: 580e12 };
+  assert.match(personaUser(etf), /^Fund: SOXX[\s\S]*Latest close: \$154\.30 on 2026-11-13\.$/);
+  assert.match(personaUser(kr), /KRW 98000\.00 on 2026-11-13\. Market cap at that price: KRW 580\.0 trillion/);
+  const h = harness({ stocks: { SOXX: etf }, not_covered: { GLDM: "gold: no company financials to judge", "BTC-USD": "Bitcoin: no company financials to judge" } });
+  await runPanel(ENV, h.deps, {});
+  assert.match(h.tg[0].text, /read as a basket of its holdings/);
+  assert.match(summaryMessage(JSON.parse(h.store.panel)), /Not covered: GLDM \(gold\), BTC-USD \(Bitcoin\): no company financials to judge\./);
 });
