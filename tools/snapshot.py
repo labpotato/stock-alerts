@@ -355,14 +355,39 @@ def yahoo_series(ts_json):
     return S
 
 
+ANNUAL = ("TotalRevenue", "OperatingIncome", "NetIncomeCommonStockholders", "DilutedEPS")
+
+
+def annual_lines(ts_json, currency):
+    """Fiscal-year revenue, operating income, net income and EPS, oldest first, for the history check."""
+    by = {}
+    for res in (ts_json.get("timeseries") or {}).get("result") or []:
+        typ = ((res.get("meta") or {}).get("type") or [""])[0]
+        if typ.startswith("annual"):
+            for row in res.get(typ) or []:
+                if row and row.get("reportedValue"):
+                    by.setdefault(row["asOfDate"], {})[typ[6:]] = row["reportedValue"]["raw"]
+    if not by:
+        return None
+    big = lambda v: "n/a" if v is None else (f"{v / 1e12:,.1f}T" if abs(v) >= 1e12 else f"{v / 1e9:,.1f}B")
+    out = []
+    for end in sorted(by):
+        r = by[end]
+        out.append(f"  FY to {end}: revenue {big(r.get('TotalRevenue'))}, operating income {big(r.get('OperatingIncome'))}, "
+                   f"net income {big(r.get('NetIncomeCommonStockholders'))}, EPS "
+                   + ("n/a" if r.get("DilutedEPS") is None else f"{r['DilutedEPS']:,.2f}"))
+    return f"Fiscal years ({currency}), oldest first:\n" + "\n".join(out)
+
+
 def yahoo_company(t, Y, closes, today):
-    types = ",".join("quarterly" + v for v in list(TS_TYPES.values()) + ["NetIncome"])
+    types = ",".join(["quarterly" + v for v in list(TS_TYPES.values()) + ["NetIncome"]] + ["annual" + v for v in ANNUAL])
     p1 = int(time.mktime((_d(today) - dt.timedelta(days=6 * 365)).timetuple()))
     js = Y.get(f"https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/{t}"
                f"?type={types}&period1={p1}&period2={int(time.time()) + 86400}", f"timeseries-{t}.json")
     cur = "KRW" if t.endswith(".KS") else "SGD" if t.endswith(".SI") else "USD"
-    return build_series(yahoo_series(js), closes, None, t, currency=cur,
-                        note="Source: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).")
+    note = "Source: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end)."
+    years = annual_lines(js, cur)
+    return build_series(yahoo_series(js), closes, None, t, currency=cur, note=note + ("\n" + years if years else ""))
 
 
 def _raw(x):
@@ -378,6 +403,10 @@ def etf_snapshot(t, q):
     sect = sorted(((k, _raw(v)) for d in th.get("sectorWeightings") or [] for k, v in d.items()), key=lambda x: -(x[1] or 0))
     ratios = {k: _raw(eh.get(k)) for k in ("priceToEarnings", "priceToBook", "priceToSales", "priceToCashflow",
                                            "medianMarketCap", "threeYearEarningsGrowth")}
+    # Yahoo's fund "price to X" fields are reciprocals (earnings per $ of price): VOO's 0.041 is a P/E of ~24.
+    for k in ("priceToEarnings", "priceToBook", "priceToSales", "priceToCashflow"):
+        v = ratios[k]
+        ratios[k] = round(1 / v, 2) if v and 0 < v < 1 else v
     if not hold and not any(ratios.values()):
         return None
     fee = _raw(((fp.get("feesExpensesInvestment") or {}).get("annualReportExpenseRatio")))
