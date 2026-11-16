@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PERSONAS } from "../src/personas.js";
-import { consensus, panelCommand, panelParams, panelSlot, personaUser, runPanel, summaryMessage } from "../src/panel.js";
+import { consensus, panelCommand, panelParams, panelSlot, personaUser, runPanel, stepPanel, summaryMessage, PER_STEP } from "../src/panel.js";
 import { answer } from "../src/bot.js";
 
 const SNAP = (hash = "h1", price = 180, drift = null) => ({
@@ -12,7 +12,7 @@ const DRIFT = { filed: "2026-11-12", view: "up", fresh: true, reaction_pct: 8, s
 
 function harness(snaps, verdict = { signal: "bullish", confidence: 70, reasoning: "Wonderful business, fair price." }) {
   const store = {}, tg = [], calls = [];
-  const kv = { get: async (k) => store[k] ?? null, put: async (k, v) => { store[k] = v; } };
+  const kv = { get: async (k) => store[k] ?? null, put: async (k, v) => { store[k] = v; }, delete: async (k) => { delete store[k]; } };
   const create = async (p) => { calls.push(p); return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(verdict) }] }; };
   const client = { messages: { create }, beta: { messages: { create } } };
   let current = snaps;
@@ -85,4 +85,31 @@ test("/panel shows the grid, /panel NVDA the reasons, and many changes arrive as
   assert.match((await panelCommand(ENV, h.deps, ""))[0], /Reasons: \/panel NVDA/);
   assert.match((await panelCommand(ENV, h.deps, "AAPL"))[0], /No panel verdict for AAPL/);
   assert.match(summaryMessage({ stocks: {} }), /SEC_USER_AGENT/);
+});
+
+test("/panel refresh answers at once and the cron judges two stocks a minute, saving as it goes", async () => {
+  const stocks = { NVDA: SNAP("a"), GOOGL: SNAP("b"), TSLA: SNAP("c"), PLTR: SNAP("d"), BE: SNAP("e") };
+  const h = harness({ stocks });
+  const reply = await panelCommand(ENV, h.deps, "refresh");
+  assert.match(reply[0], /Judging all five stocks now/);
+  assert.equal(h.calls.length, 0);                                     // nothing heavy inside the webhook
+  let r = await stepPanel(ENV, h.deps);
+  assert.equal(PER_STEP, 2);
+  assert.deepEqual([r.progress, r.left], [2, 3]);
+  assert.equal(h.calls.length, 10);
+  assert.equal(Object.keys(JSON.parse(h.store.panel).stocks).length, 2);   // already saved
+  r = await stepPanel(ENV, h.deps); r = await stepPanel(ENV, h.deps);
+  assert.ok(r.done);
+  assert.equal(h.tg.length, 1);
+  assert.match(h.tg[0].text, /<b>BE<\/b>/);
+  assert.deepEqual(await stepPanel(ENV, h.deps), { idle: true });
+  assert.match((await panelCommand(ENV, h.deps, "@stock_alerts_bot"))[0], /Investor panel/);   // "/panel@bot" in groups
+});
+
+test("a plain /panel before any verdict starts the first panel instead of saying nothing", async () => {
+  const h = harness({ stocks: { NVDA: SNAP() } });
+  assert.match((await panelCommand(ENV, h.deps, ""))[0], /judging all five stocks now/);
+  assert.match((await panelCommand(ENV, h.deps, ""))[0], /being judged right now/);
+  await stepPanel(ENV, h.deps);
+  assert.match(h.tg[0].text, /<b>NVDA<\/b>  B🟢/);
 });

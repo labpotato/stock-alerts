@@ -126,9 +126,14 @@ export async function loadPanel(kv) {
   catch { return { stocks: {}, drift_sent: [], history: [] }; }
 }
 
-/** opts: { force: re-judge every stock, slot: only run at the daily slot, only: [tickers] }. */
-export async function runPanel(env, deps, opts = {}) {
-  const { fetch: doFetch, client, kv, now = () => Date.now() } = deps;
+// The work runs in the every-minute cron, at most PER_STEP stocks a minute, saving after each stock:
+// a Telegram webhook only gets about 30 seconds after its reply, and one cron run shares a limit of
+// 50 outside requests with the news check, so 25 model calls cannot happen in one go.
+export const PER_STEP = 2;
+
+/** Queue a panel run. opts: { force: re-judge every stock, slot: only at the daily slot, only: [tickers] }. */
+export async function enqueuePanel(env, deps, opts = {}) {
+  const { kv, now = () => Date.now() } = deps;
   if (!kv) return { off: "no NEWS_KV binding" };
   const t = now();
   if (opts.slot) {
@@ -137,16 +142,37 @@ export async function runPanel(env, deps, opts = {}) {
     if ((await kv.get("panel_slot")) === slot) return { skipped: "already ran" };
     await kv.put("panel_slot", slot);
   }
+  const q = { force: !!opts.force, only: opts.only || null, todo: null, changed: [], silent: !!opts.silent,
+              summary: !!opts.summary, at: t };
+  await kv.put("panel_queue", JSON.stringify(q));
+  return { queued: true };
+}
+
+/** One cron step: judge up to PER_STEP stocks from the queue; when the queue is done, send the messages. */
+export async function stepPanel(env, deps) {
+  const { fetch: doFetch, client, kv, now = () => Date.now() } = deps;
+  if (!kv) return { off: "no NEWS_KV binding" };
+  let q;
+  try { q = JSON.parse((await kv.get("panel_queue")) || "null"); } catch { q = null; }
+  if (!q) return { idle: true };
+  const t = now();
   let snaps;
-  try { const r = await doFetch(env.SNAP_URL); snaps = r.ok ? await r.json() : null; } catch { snaps = null; }
-  if (!snaps || !snaps.stocks || !Object.keys(snaps.stocks).length) return { skipped: "no snapshots yet" };
+  try { const r = await doFetch(env.SNAP_URL, { cf: { cacheTtl: 60 } }); snaps = r.ok ? await r.json() : null; } catch { snaps = null; }
+  if (!snaps || !snaps.stocks || !Object.keys(snaps.stocks).length) {
+    await kv.delete("panel_queue");
+    if (q.summary) await send(env, doFetch, "🏛️ No SEC snapshots yet, so no panel. The research job builds them on weekdays after the US close.");
+    return { skipped: "no snapshots yet" };
+  }
+  if (!q.todo) q.todo = Object.keys(snaps.stocks).filter((tk) => !q.only || q.only.includes(tk));
   const st = await loadPanel(kv);
-  const day = new Date(t).toISOString().slice(0, 10), changed = [], drifts = [];
-  for (const [tk, s] of Object.entries(snaps.stocks)) {
-    if (opts.only && !opts.only.includes(tk)) continue;
+  const day = new Date(t).toISOString().slice(0, 10);
+  let judged = 0;
+  while (q.todo.length && judged < PER_STEP) {
+    const tk = q.todo.shift(), s = snaps.stocks[tk];
+    if (!s) continue;
     const old = st.stocks[tk];
     const moved = old && old.price && Math.abs(s.price / old.price - 1) > REPRICE;
-    if (!opts.force && old && old.hash === s.hash && !moved) continue;
+    if (!q.force && old && old.hash === s.hash && !moved) continue;      // unchanged numbers: free
     const names = Object.keys(PERSONAS);
     const got = await Promise.all(names.map((n) => ask(client, n, s, env.PANEL_MODEL)));
     const verdicts = Object.fromEntries(names.map((n, i) => [n, got[i]]));
@@ -154,11 +180,19 @@ export async function runPanel(env, deps, opts = {}) {
                       why: !old ? "first" : old.hash !== s.hash ? "new filing" : moved ? "price moved" : "asked" };
     st.history = (st.history || []).concat([{ t: tk, at: day, price: s.price,
       v: Object.fromEntries(names.map((n) => [n, [verdicts[n].signal, verdicts[n].confidence]])) }]).slice(-400);
-    changed.push(tk);
+    q.changed.push(tk);
+    judged += 1;
+    st.as_of = snaps.as_of;
+    await kv.put("panel", JSON.stringify(st));                            // saved stock by stock
   }
+  if (q.todo.length) {
+    await kv.put("panel_queue", JSON.stringify(q));
+    return { progress: q.changed.length, left: q.todo.length };
+  }
+  await kv.delete("panel_queue");
+  const drifts = [];
   for (const [tk, s] of Object.entries(snaps.stocks)) {
-    const d = s.drift;
-    const key = `${tk}:${d && d.filed}`;
+    const d = s.drift, key = `${tk}:${d && d.filed}`;
     if (d && d.fresh && (d.view === "up" || d.view === "down") && !(st.drift_sent || []).includes(key)) {
       st.drift_sent = (st.drift_sent || []).concat([key]).slice(-60);
       drifts.push([tk, d]);
@@ -167,20 +201,30 @@ export async function runPanel(env, deps, opts = {}) {
   st.as_of = snaps.as_of;
   await kv.put("panel", JSON.stringify(st));
   const msgs = [];
-  if (changed.length > 2) msgs.push(summaryMessage(st, changed));       // the first run, or many filings at once
-  else for (const tk of changed) msgs.push(detailMessage(tk, st.stocks[tk], snaps.stocks[tk]));
-  for (const [tk, d] of drifts) if (!changed.includes(tk)) msgs.push(driftMessage(tk, d));
-  if (!opts.silent) for (const m of msgs) await send(env, doFetch, m);
-  return { changed, drifts: drifts.map(([tk]) => tk), msgs };
+  if (q.summary || q.changed.length > 2) { if (q.changed.length || q.summary) msgs.push(summaryMessage(st)); }
+  else for (const tk of q.changed) msgs.push(detailMessage(tk, st.stocks[tk], snaps.stocks[tk]));
+  for (const [tk, d] of drifts) if (!q.changed.includes(tk)) msgs.push(driftMessage(tk, d));
+  if (!q.silent) for (const m of msgs) await send(env, doFetch, m);
+  return { changed: q.changed, drifts: drifts.map(([tk]) => tk), msgs, done: true };
+}
+
+/** Queue and run to the end in one go (tests, and manual runs outside the Worker's time limits). */
+export async function runPanel(env, deps, opts = {}) {
+  const e = await enqueuePanel(env, deps, opts);
+  if (!e.queued) return e;
+  for (let i = 0; i < 50; i += 1) {
+    const r = await stepPanel(env, deps);
+    if (r.done || r.skipped || r.idle) return r;
+  }
+  return { error: "panel did not finish" };
 }
 
 /** "/panel", "/panel NVDA", "/panel refresh": text replies for the bot. */
 export async function panelCommand(env, deps, arg) {
-  const a = String(arg || "").trim().toUpperCase();
+  const a = String(arg || "").replace(/^@\S+/, "").trim().toUpperCase();
   if (a === "REFRESH") {
-    const r = await runPanel(env, deps, { force: true, silent: true });
-    if (r.skipped) return [`🏛️ ${r.skipped === "no snapshots yet" ? "No SEC snapshots yet: the research job needs the SEC_USER_AGENT secret." : r.skipped}`];
-    return [summaryMessage(await loadPanel(deps.kv))];
+    await enqueuePanel(env, deps, { force: true, summary: true });
+    return ["🏛️ Judging all five stocks now (25 short model calls, two stocks a minute). The panel arrives here in about 3 minutes."];
   }
   const st = await loadPanel(deps.kv);
   if (a && st.stocks[a]) {
@@ -189,5 +233,12 @@ export async function panelCommand(env, deps, arg) {
     return [detailMessage(a, st.stocks[a], snap)];
   }
   if (a) return [`🏛️ No panel verdict for ${esc(a)}. The panel covers: ${Object.keys(st.stocks).join(", ") || "none yet"}.`];
+  if (!Object.keys(st.stocks).length) {
+    let q = null;
+    try { q = JSON.parse((await deps.kv.get("panel_queue")) || "null"); } catch { q = null; }
+    if (q) return ["🏛️ The panel is being judged right now; it arrives here in a few minutes."];
+    await enqueuePanel(env, deps, { summary: true });
+    return ["🏛️ No verdicts yet, so I'm judging all five stocks now. The panel arrives here in about 3 minutes."];
+  }
   return [summaryMessage(st)];
 }
