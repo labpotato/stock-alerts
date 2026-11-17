@@ -111,13 +111,13 @@ jobs:
           else
             echo "::warning::GH_DISPATCH_TOKEN is not set, so the 10-minute heartbeat stays off and the alerter relies on GitHub's own (unreliable) schedule."
           fi
-          curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/setWebhook" \
+          curl -sS --retry 4 --retry-all-errors --retry-delay 3 -X POST "https://api.telegram.org/bot${TG_TOKEN}/setWebhook" \
             --data-urlencode "url=${URL}" --data-urlencode "secret_token=${WH}" \
             --data-urlencode 'allowed_updates=["message"]' -d drop_pending_updates=true \
             | python3 -c "import json,sys; r=json.load(sys.stdin); print('Telegram webhook set:', r.get('ok'), r.get('description',''))"
           # The "/" menu in Telegram, rebuilt from config.json on every deploy.
           python3 ../tools/bot_commands.py > /tmp/commands.json
-          curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/setMyCommands" \
+          curl -sS --retry 4 --retry-all-errors --retry-delay 3 -X POST "https://api.telegram.org/bot${TG_TOKEN}/setMyCommands" \
             -H "content-type: application/json" --data @/tmp/commands.json \
             | python3 -c "import json,sys; r=json.load(sys.stdin); print('Telegram menu set:', r.get('ok'), r.get('description',''))"
           echo "::notice::Bot is live. Send /start to your bot in Telegram."
