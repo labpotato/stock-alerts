@@ -1,5 +1,5 @@
 {
- "as_of": "2026-11-16",
+ "as_of": "2026-11-17",
  "source": "SEC XBRL company facts, Yahoo Finance closes, financial time series and fund holdings; layout from ai-hedge-fund (MIT)",
  "stocks": {
   "VOO": {
@@ -60,8 +60,8 @@
    },
    "pe_now": 24.21,
    "name": "Vanguard S&P 500 ETF",
-   "price": 693.3800048828125,
-   "price_date": "2026-11-13"
+   "price": 680.260009765625,
+   "price_date": "2026-11-16"
   },
   "GOOGL": {
    "ticker": "GOOGL",
@@ -227,7 +227,7 @@
    "name": "Alphabet Inc.",
    "drift": {
     "filed": "2026-10-28",
-    "age_days": 19,
+    "age_days": 20,
     "reaction_pct": -12.71,
     "spy_pct": -1.81,
     "abnormal_pct": -10.9,
@@ -240,10 +240,10 @@
     "until_sessions": 60,
     "fresh": false
    },
-   "price": 295.7699890136719,
-   "price_date": "2026-11-13",
-   "market_cap_now": 3658083224121.0938,
-   "pe_now": 15.52047665244382
+   "price": 283.7200012207031,
+   "price_date": "2026-11-16",
+   "market_cap_now": 3509048975097.6562,
+   "pe_now": 14.888155723512929
   },
   "NVDA": {
    "ticker": "NVDA",
@@ -409,7 +409,7 @@
    "name": "NVIDIA CORP",
    "drift": {
     "filed": "2026-08-26",
-    "age_days": 82,
+    "age_days": 83,
     "reaction_pct": 2.11,
     "spy_pct": 0.45,
     "abnormal_pct": 1.66,
@@ -421,10 +421,10 @@
     "view": "none",
     "fresh": false
    },
-   "price": 162.85000610351562,
-   "price_date": "2026-11-13",
-   "market_cap_now": 3954812398223.877,
-   "pe_now": 20.50411085822654
+   "price": 156.13999938964844,
+   "price_date": "2026-11-16",
+   "market_cap_now": 3791859885177.6123,
+   "pe_now": 19.659267650587218
   },
   "TSLA": {
    "ticker": "TSLA",
@@ -590,7 +590,7 @@
    "name": "Tesla, Inc.",
    "drift": {
     "filed": "2026-10-21",
-    "age_days": 26,
+    "age_days": 27,
     "reaction_pct": -0.4,
     "spy_pct": -1.18,
     "abnormal_pct": 0.78,
@@ -602,10 +602,10 @@
     "view": "none",
     "fresh": false
    },
-   "price": 390.2200012207031,
-   "price_date": "2026-11-13",
-   "market_cap_now": 1381769024322.5098,
-   "pe_now": 429.38751532706954
+   "price": 379.739990234375,
+   "price_date": "2026-11-16",
+   "market_cap_now": 1344659305419.9219,
+   "pe_now": 417.85559522060964
   },
   "PLTR": {
    "ticker": "PLTR",
@@ -771,7 +771,7 @@
    "name": "Palantir Technologies Inc.",
    "drift": {
     "filed": "2026-11-02",
-    "age_days": 14,
+    "age_days": 15,
     "reaction_pct": -6.74,
     "spy_pct": 1.47,
     "abnormal_pct": -8.21,
@@ -784,10 +784,10 @@
     "until_sessions": 60,
     "fresh": false
    },
-   "price": 167.99000549316406,
-   "price_date": "2026-11-13",
-   "market_cap_now": 432393842878.9978,
-   "pe_now": 117.84722510775728
+   "price": 160.38999938964844,
+   "price_date": "2026-11-16",
+   "market_cap_now": 412831989569.00024,
+   "pe_now": 112.515719656156
   },
   "SOXX": {
    "ticker": "SOXX",
@@ -847,8 +847,8 @@
    },
    "pe_now": 33.27,
    "name": "iShares Semiconductor ETF",
-   "price": 149.3000030517578,
-   "price_date": "2026-11-13"
+   "price": 141.22000122070312,
+   "price_date": "2026-11-16"
   },
   "BE": {
    "ticker": "BE",
@@ -1014,7 +1014,7 @@
    "name": "Bloom Energy Corp",
    "drift": {
     "filed": "2026-10-22",
-    "age_days": 25,
+    "age_days": 26,
     "reaction_pct": -14.51,
     "spy_pct": -1.0,
     "abnormal_pct": -13.51,
@@ -1027,10 +1027,10 @@
     "until_sessions": 60,
     "fresh": false
    },
-   "price": 191.99000549316406,
-   "price_date": "2026-11-13",
-   "market_cap_now": 62260246891.37268,
-   "pe_now": 119.056058796121
+   "price": 177.27999877929688,
+   "price_date": "2026-11-16",
+   "market_cap_now": 57489953524.139404,
+   "pe_now": 109.9341494565233
   },
   "AIPO": {
    "ticker": "AIPO",
@@ -1090,8 +1090,8 @@
    },
    "pe_now": 31.54,
    "name": "Defiance AI & Power Infrastructure ETF",
-   "price": 23.65999984741211,
-   "price_date": "2026-11-13"
+   "price": 22.690000534057617,
+   "price_date": "2026-11-16"
   },
   "BOTZ": {
    "ticker": "BOTZ",
@@ -1151,8 +1151,8 @@
    },
    "pe_now": 35.26,
    "name": "Global X Robotics & Artificial Intelligence ETF",
-   "price": 31.229999542236328,
-   "price_date": "2026-11-13"
+   "price": 30.1200008392334,
+   "price_date": "2026-11-16"
   },
   "XLV": {
    "ticker": "XLV",
@@ -1212,8 +1212,8 @@
    },
    "pe_now": 30.14,
    "name": "State Street Health Care Select Sector SPDR ETF",
-   "price": 188.85000610351562,
-   "price_date": "2026-11-13"
+   "price": 187.8800048828125,
+   "price_date": "2026-11-16"
   },
   "XLF": {
    "ticker": "XLF",
@@ -1273,8 +1273,8 @@
    },
    "pe_now": 15.26,
    "name": "State Street Financial Select Sector SPDR ETF",
-   "price": 58.68000030517578,
-   "price_date": "2026-11-13"
+   "price": 58.18000030517578,
+   "price_date": "2026-11-16"
   },
   "ITA": {
    "ticker": "ITA",
@@ -1334,8 +1334,8 @@
    },
    "pe_now": 30.89,
    "name": "iShares U.S. Aerospace & Defense ETF",
-   "price": 71.51000213623047,
-   "price_date": "2026-11-13"
+   "price": 69.75,
+   "price_date": "2026-11-16"
   },
   "QQQ": {
    "ticker": "QQQ",
@@ -1395,8 +1395,8 @@
    },
    "pe_now": 28.44,
    "name": "Invesco QQQ Trust",
-   "price": 679.8900146484375,
-   "price_date": "2026-11-13"
+   "price": 661.75,
+   "price_date": "2026-11-16"
   },
   "XLB": {
    "ticker": "XLB",
@@ -1456,8 +1456,8 @@
    },
    "pe_now": 21.94,
    "name": "State Street Materials Select Sector SPDR ETF",
-   "price": 52.22999954223633,
-   "price_date": "2026-11-13"
+   "price": 51.470001220703125,
+   "price_date": "2026-11-16"
   },
   "XLP": {
    "ticker": "XLP",
@@ -1517,8 +1517,8 @@
    },
    "pe_now": 24.06,
    "name": "State Street Consumer Staples Select Sector SPDR ETF",
-   "price": 92.3499984741211,
-   "price_date": "2026-11-13"
+   "price": 92.5999984741211,
+   "price_date": "2026-11-16"
   },
   "IQQ": {
    "ticker": "IQQ",
@@ -1578,8 +1578,8 @@
    },
    "pe_now": 28.47,
    "name": "iShares Nasdaq 100 ETF",
-   "price": 23.010000228881836,
-   "price_date": "2026-11-13"
+   "price": 22.399999618530273,
+   "price_date": "2026-11-16"
   },
   "SPCX": {
    "ticker": "SPCX",
@@ -1588,7 +1588,7 @@
     {
      "period": "2026-09-30",
      "filed": null,
-     "market_cap": 1735397257614.1357,
+     "market_cap": 1713566007614.1357,
      "pe": null,
      "roe": -0.016213341781317885,
      "gross_m": 0.5673626064975189,
@@ -1630,14 +1630,14 @@
    "gross_margin_trend": 0.04861586114080996,
    "bvps_cagr": null,
    "debt_to_equity_latest": 0.43716622918175235,
-   "market_cap_latest": 1735397257614.1357,
+   "market_cap_latest": 1713566007614.1357,
    "eps_growth_yoy": null,
-   "text": "Company: SPCX\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (USD), oldest first:\n  FY to 2023-12-31: revenue 10.4B, operating income 0.5B, net income -4.6B, EPS -0.44\n  FY to 2024-12-31: revenue 14.0B, operating income 0.7B, net income 0.0B, EPS 0.00\n  FY to 2025-12-31: revenue 18.7B, operating income -2.1B, net income -4.9B, EPS -0.51\n\nSummary:\n  Market cap (latest filed): 1,735.4B\n  ROE avg: -0.04  |  Net margin avg: -0.23\n  Gross margin trend (latest-oldest): 0.05\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.44\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-09-30 | ? | 1,735.4B | n/a | -0.02 | 0.57 | -0.02 | -0.09 | 0.44 | 3.08 | n/a | -0.23 | 14.17 | -3.22\n2026-06-30 | ? | 821.0B | n/a | -0.07 | 0.52 | -0.15 | -0.36 | 0.52 | 5.12 | n/a | -1.42 | 21.70 | -5.69",
-   "hash": "385e84be41b5fba0",
+   "text": "Company: SPCX\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (USD), oldest first:\n  FY to 2023-12-31: revenue 10.4B, operating income 0.5B, net income -4.6B, EPS -0.44\n  FY to 2024-12-31: revenue 14.0B, operating income 0.7B, net income 0.0B, EPS 0.00\n  FY to 2025-12-31: revenue 18.7B, operating income -2.1B, net income -4.9B, EPS -0.51\n\nSummary:\n  Market cap (latest filed): 1,713.6B\n  ROE avg: -0.04  |  Net margin avg: -0.23\n  Gross margin trend (latest-oldest): 0.05\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.44\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-09-30 | ? | 1,713.6B | n/a | -0.02 | 0.57 | -0.02 | -0.09 | 0.44 | 3.08 | n/a | -0.23 | 14.17 | -3.22\n2026-06-30 | ? | 821.0B | n/a | -0.07 | 0.52 | -0.15 | -0.36 | 0.52 | 5.12 | n/a | -1.42 | 21.70 | -5.69",
+   "hash": "fc25afe15d9749f6",
    "name": "SPCX",
-   "price": 139.11000061035156,
-   "price_date": "2026-11-13",
-   "market_cap_now": 1735397257614.1357,
+   "price": 137.36000061035156,
+   "price_date": "2026-11-16",
+   "market_cap_now": 1713566007614.1357,
    "pe_now": null
   },
   "005930.KS": {
@@ -1694,10 +1694,10 @@
    "text": "Company: 005930.KS  |  Figures in KRW\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (KRW), oldest first:\n  FY to 2022-12-31: revenue 302.2T, operating income 43.4T, net income 54.7T, EPS 8,057.00\n  FY to 2023-12-31: revenue 258.9T, operating income 6.6T, net income 14.5T, EPS 2,131.00\n  FY to 2024-12-31: revenue 300.9T, operating income 32.7T, net income 33.6T, EPS 4,950.00\n  FY to 2025-12-31: revenue 333.6T, operating income 43.6T, net income 44.3T, EPS 6,603.00\n\nSummary:\n  Market cap (latest filed): 1,822,740.1B\n  ROE avg: 0.22  |  Net margin avg: 0.26\n  Gross margin trend (latest-oldest): 0.10\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.32\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-06-30 | ? | 1,822,740.1B | 12.18 | 0.26 | 0.57 | 0.37 | 0.31 | 0.32 | 2.83 | n/a | 22,539.80 | 85,097.31 | 21,156.88\n2026-03-31 | ? | 1,588,538.6B | 19.06 | 0.18 | 0.48 | 0.24 | 0.21 | 0.31 | 2.54 | n/a | 14,190.26 | 80,707.82 | 8,865.54",
    "hash": "d55e56caf879f409",
    "name": "005930.KS",
-   "price": 198200.0,
-   "price_date": "2026-11-16",
-   "market_cap_now": 1316091359223000.0,
-   "pe_now": 8.793336215086857
+   "price": 191700.0,
+   "price_date": "2026-11-17",
+   "market_cap_now": 1272929937250500.0,
+   "pe_now": 8.504957378567862
   },
   "000660.KS": {
    "ticker": "000660.KS",
@@ -1753,10 +1753,10 @@
    "text": "Company: 000660.KS  |  Figures in KRW\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (KRW), oldest first:\n  FY to 2022-12-31: revenue 44.6T, operating income 6.8T, net income 2.2T, EPS 3,242.00\n  FY to 2023-12-31: revenue 32.8T, operating income -7.7T, net income -9.1T, EPS -13,244.00\n  FY to 2024-12-31: revenue 66.2T, operating income 23.5T, net income 19.8T, EPS 28,419.00\n  FY to 2025-12-31: revenue 97.1T, operating income 47.2T, net income 42.9T, EPS 60,378.00\n\nSummary:\n  Market cap (latest filed): 1,170,660.3B\n  ROE avg: 0.54  |  Net margin avg: 0.71\n  Gross margin trend (latest-oldest): 0.08\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.33\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-06-30 | ? | 1,170,660.3B | 7.23 | 0.62 | 0.76 | 0.68 | 0.86 | 0.33 | 2.59 | n/a | 227,592.12 | 368,694.57 | 127,069.35\n2026-03-31 | ? | 1,294,387.0B | 17.23 | 0.46 | 0.68 | 0.59 | 0.57 | 0.36 | 2.62 | n/a | 105,597.47 | 230,877.99 | 57,180.96",
    "hash": "0061a5fb7566ec35",
    "name": "000660.KS",
-   "price": 1141000.0,
-   "price_date": "2026-11-16",
-   "market_cap_now": 811989930997000.0,
-   "pe_now": 5.013354587649868
+   "price": 1117000.0,
+   "price_date": "2026-11-17",
+   "market_cap_now": 794910388189000.0,
+   "pe_now": 4.907902782125243
   }
  },
  "errors": {},
