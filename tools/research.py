@@ -94,7 +94,7 @@ def main():
             old = {}
     fund, fnote = fundamentals()
     cong, cnote = congress(old.get("congress", []), today)
-    doc = {"as_of": today.isoformat(),
+    doc = {"as_of": today.isoformat(), "generated_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
            "fundamentals": fund if fund is not None else old.get("fundamentals", []),
            "congress": cong,
            "notes": {"fundamentals": fnote, "congress": cnote,

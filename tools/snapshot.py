@@ -200,7 +200,9 @@ def build_series(S, closes, sector=None, ticker="", n=N_PERIODS, currency="USD",
         o_t, c_t = ttm(ocf, e), ttm(capex, e)
         f_day = filed.get(e)
         px_day = f_day or (_d(e) + dt.timedelta(days=45)).isoformat()
-        px = price_on(closes, px_day) if px_day <= (closes[-1][0] if closes else "") else (closes[-1][1] if closes else None)
+        # A price date still in the future would make market cap and P/E move every day (and the
+        # panel re-judge for no new filing), so they stay blank until that date has traded.
+        px = price_on(closes, px_day) if closes and px_day <= closes[-1][0] else None
         mcap = px * sh[e] if px else None
         rows.append({
             "period": e, "filed": f_day, "market_cap": mcap,
@@ -425,10 +427,9 @@ def etf_snapshot(t, q):
              f"Fund: expense ratio {pct(fee)}, total assets {num(_raw(ks.get('totalAssets')))}, "
              f"3-year average return {pct(_raw(ks.get('threeYearAverageReturn')))}, 5-year {pct(_raw(ks.get('fiveYearAverageReturn')))}"]
     text = "\n".join(lines)
-    # The hash ignores day-to-day ratio noise: holdings rounded to 1 point, P/E and growth to 5.
-    r5 = lambda v: None if v is None else int(round(v / 5.0))
-    key = json.dumps([[s, round((w or 0) * 100)] for s, w in hold[:10]] +
-                     [r5(ratios["priceToEarnings"]), r5((ratios["threeYearEarningsGrowth"] or 0) * 100)])
+    # The hash follows what the fund owns (top 10, weights to 2 points), not its price-driven ratios:
+    # P/E moves with the market every day, and the panel already re-judges on a 15% price move.
+    key = json.dumps([[s, 2 * round((w or 0) * 50)] for s, w in hold[:10]])
     return {"ticker": t, "kind": "etf", "periods": [], "text": text, "hash": hashlib.sha256(key.encode()).hexdigest()[:16],
             "holdings": hold[:10], "ratios": ratios, "pe_now": ratios["priceToEarnings"]}
 

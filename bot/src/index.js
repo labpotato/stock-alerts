@@ -1,6 +1,6 @@
 // Cloudflare Worker entry: Telegram sends each message here (webhook).
 import Anthropic from "@anthropic-ai/sdk";
-import { answer, dispatchAlerter, holdingsFor, isAllowed } from "./bot.js";
+import { answer, dispatchAlerter, dispatchWorkflow, holdingsFor, isAllowed, researchDue } from "./bot.js";
 import { buildList } from "./list.js";
 import { feedCheck, recentNews, runMood, runNews } from "./news.js";
 import { enqueuePanel, loadPanel, panelCommand, stepPanel } from "./panel.js";
@@ -52,6 +52,7 @@ export default {
   async scheduled(controller, env, ctx) {
     const doFetch = (u, o) => fetch(u, o);
     if (new Date(controller.scheduledTime).getUTCMinutes() % 10 === 0) ctx.waitUntil(dispatchAlerter(env, doFetch));
+    if (researchDue(controller.scheduledTime)) ctx.waitUntil(dispatchWorkflow(env, doFetch, "research.yml"));
     if (env.NEWS_KV && env.NEWS !== "off") {
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
       ctx.waitUntil(runNews(env, { fetch: doFetch, client, kv: env.NEWS_KV })

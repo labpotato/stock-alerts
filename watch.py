@@ -842,6 +842,23 @@ def market_move(bench):
     return {"b1": b1, "b3": b3, "unusual": abs(b1 / 100 / sig) >= AN["sigma_single_with_abs"]}
 
 
+def merge_ticker_alerts(alerts):
+    """A ticker's 1-day ('move') and 3-day ('run') findings from one reading as one message: the
+    1-day message, with the 3-day figure added and both keys."""
+    runs = {a["ticker"]: a for a in alerts if a.get("kind") == "run" and a.get("ticker")}
+    out = []
+    for a in alerts:
+        if a.get("kind") == "run" and any(b.get("kind") == "move" and b.get("ticker") == a["ticker"] for b in alerts):
+            continue
+        if a.get("kind") == "move" and a.get("ticker") in runs:
+            r = runs[a["ticker"]]
+            a = dict(a, keys=[a["key"], r["key"]],
+                     text=a["text"] + f"\n\nOver the last 3 trading days it is {r['note'].split(' in 3')[0]}, "
+                                      "also unusual for it.")
+        out.append(a)
+    return out
+
+
 def anomalies(rows, bench):
     """Each finding is its own message: dict(key, kind, ticker, text).
     When the market itself (the benchmark) has an unusual day, one market message is sent and a
@@ -1693,11 +1710,19 @@ def decide(rows, alerts, state, sess):
             else:
                 out.append(signal_message(o, side, legs, earlier, o.get("sess", sess)))
 
-    # 3. Unusual movement, one message each.
-    for a in alerts:
-        if a["key"] in sent:
+    # 3. Unusual movement: at most one message per ticker per day (Dongmin: one message per
+    #    ticker). A 1-day and a 3-day finding in the same reading become one message.
+    told = {k.split(":", 2)[2] for k in sent if k.startswith(("anom:move:", "anom:run:"))}
+    for a in merge_ticker_alerts(alerts):
+        keys = a.get("keys") or [a["key"]]
+        if all(k in sent for k in keys):
             continue
-        sent.append(a["key"])
+        if a.get("ticker") and a["kind"] in ("move", "run") and a["ticker"] in told:
+            sent.extend(k for k in keys if k not in sent)       # already told today: stay quiet
+            continue
+        sent.extend(k for k in keys if k not in sent)
+        if a.get("ticker"):
+            told.add(a["ticker"])
         out.append(anomaly_message(a, rows, sess))
 
     # 4. This reading becomes the reference for the next one.

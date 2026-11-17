@@ -120,3 +120,23 @@ def test_every_currency_message_comes_with_its_chart(make_watch):
     a["d"], a["px"] = {"c": [1048.8] * 3}, 1058.9
     text, png = w.anomaly_message({"ticker": "SGDKRW=X", "kind": "move", "title": "x"}, [a], "REGULAR")
     assert png == b"PNG:Big move"
+
+
+def test_one_unusual_move_message_per_ticker_per_day(make_watch, monkeypatch):
+    """17 Nov: ETH-USD sent a 1-day and a 3-day 'unusual' message in the same reading. Now one
+    message carries both figures, and a later finding for the same ticker that day stays quiet."""
+    w, m = make_watch(tickers=("QQQ", "BOTZ"))
+    monkeypatch.setattr(w, "anomaly_message", lambda a, rows, sess: (a["text"], None))
+    move = {"key": "anom:move:ETH-USD", "kind": "move", "ticker": "ETH-USD", "text": "Down 6% today.", "note": "down 6.0% today"}
+    run = {"key": "anom:run:ETH-USD", "kind": "run", "ticker": "ETH-USD", "text": "Down 11% in 3 days.",
+           "note": "down 11.2% in 3 trading days"}
+    other = {"key": "anom:move:BOTZ", "kind": "move", "ticker": "BOTZ", "text": "BOTZ moved.", "note": "up 4.0% today"}
+    state = {"sent": [], "pending": {}, "obs": {}}
+    out = w.decide([], [move, run, other], state, "REGULAR")
+    texts = [t for t, _ in out]
+    assert len(texts) == 2
+    assert texts[0] == "Down 6% today.\n\nOver the last 3 trading days it is down 11.2%, also unusual for it."
+    assert {"anom:move:ETH-USD", "anom:run:ETH-USD", "anom:move:BOTZ"} <= set(state["sent"])
+    # Later the same day only the 3-day finding for BOTZ shows up: already told about BOTZ today.
+    assert w.decide([], [{**run, "key": "anom:run:BOTZ", "ticker": "BOTZ"}], state, "REGULAR") == []
+    assert "anom:run:BOTZ" in state["sent"]

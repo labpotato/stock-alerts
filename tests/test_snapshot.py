@@ -163,3 +163,25 @@ def test_every_watched_ticker_is_covered_or_says_why_not():
     assert {"NVDA", "SPCX", "SOXX", "VOO", "005930.KS", "000660.KS"} <= set(tickers)
     assert set(skip) >= {"GLDM", "BTC-USD", "ETH-USD"} and "gold" in skip["GLDM"]
     assert not any(t.endswith("=X") for t in tickers)
+
+
+def test_fingerprints_change_only_with_filings_not_with_daily_prices():
+    """17 Nov: SPCX (Yahoo data, no filing dates) changed fingerprint with no new filing, so the panel
+    would re-judge it daily. A price date still in the future now leaves market cap and P/E blank."""
+    import tools.snapshot as SN
+    series = SN.yahoo_series({"timeseries": {"result": [
+        ts_rows("quarterlyTotalRevenue", [1e9] * 6, "2025-06-30"), ts_rows("quarterlyNetIncomeCommonStockholders", [1e8] * 6, "2025-06-30"),
+        ts_rows("quarterlyDilutedAverageShares", [1e9] * 6, "2025-06-30")]}})
+    day1 = closes(end="2026-11-13", px=100.0)                      # latest quarter 2026-09-30 + 45 days = 2026-11-14
+    day2 = closes(end="2026-11-16", px=130.0)[:-1] + [("2026-11-16", 131.0)]
+    a = SN.build_series(series, day1, None, "SPCX")
+    assert a["periods"][0]["market_cap"] is None and a["periods"][0]["pe"] is None
+    b = SN.build_series(series, closes(end="2026-11-13", px=100.0)[:-1] + [("2026-11-13", 120.0)], None, "SPCX")
+    assert a["hash"] == b["hash"]                                 # a different latest close: same fingerprint
+    c = SN.build_series(series, day2, None, "SPCX")
+    assert c["periods"][0]["market_cap"] is not None              # once the date has traded, the figure appears
+    q = {"topHoldings": {"holdings": [{"symbol": "AMD", "holdingPercent": {"raw": 0.091}}],
+                         "equityHoldings": {"priceToEarnings": {"raw": 0.0300}}}}
+    e1 = S.etf_snapshot("SOXX", q)
+    q["topHoldings"]["equityHoldings"]["priceToEarnings"] = {"raw": 0.0308}   # P/E 33.3 -> 32.5, across a rounding edge
+    assert S.etf_snapshot("SOXX", q)["hash"] == e1["hash"]
