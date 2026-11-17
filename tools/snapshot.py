@@ -427,9 +427,12 @@ def etf_snapshot(t, q):
              f"Fund: expense ratio {pct(fee)}, total assets {num(_raw(ks.get('totalAssets')))}, "
              f"3-year average return {pct(_raw(ks.get('threeYearAverageReturn')))}, 5-year {pct(_raw(ks.get('fiveYearAverageReturn')))}"]
     text = "\n".join(lines)
-    # The hash follows what the fund owns (top 10, weights to 2 points), not its price-driven ratios:
-    # P/E moves with the market every day, and the panel already re-judges on a 15% price move.
-    key = json.dumps([[s, 2 * round((w or 0) * 50)] for s, w in hold[:10]])
+    # The hash ignores day-to-day ratio noise: holdings rounded to 1 point, P/E and growth to 5.
+    # (Yahoo's fund ratios were identical across trading days on 16-17 Nov, so this stays as first built:
+    # changing the formula would make every stored ETF verdict look out of date.)
+    r5 = lambda v: None if v is None else int(round(v / 5.0))
+    key = json.dumps([[s, round((w or 0) * 100)] for s, w in hold[:10]] +
+                     [r5(ratios["priceToEarnings"]), r5((ratios["threeYearEarningsGrowth"] or 0) * 100)])
     return {"ticker": t, "kind": "etf", "periods": [], "text": text, "hash": hashlib.sha256(key.encode()).hexdigest()[:16],
             "holdings": hold[:10], "ratios": ratios, "pe_now": ratios["priceToEarnings"]}
 
