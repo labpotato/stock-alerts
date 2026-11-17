@@ -2,6 +2,8 @@ name: research
 # Once a day after the US close: the last filed quarter for each single stock (SEC XBRL)
 # and new House trade disclosures in the watched tickers, into docs/research.json.
 # Tools: day-trader-skill's trader-analyst and trader-pelosi, vendored in .claude/skills (MIT).
+# The bot's Worker starts it at 22:45 UTC on weekdays (GitHub's own schedule runs hours late);
+# the schedule below is a backup that skips when the job already ran in the last 12 hours.
 on:
   schedule:
     - cron: '41 22 * * 1-5'
@@ -20,18 +22,37 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - name: Skip the backup run if the bot already started one
+        id: fresh
+        if: github.event_name == 'schedule'
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import datetime as dt, json
+          try:
+              t = dt.datetime.fromisoformat(json.load(open("docs/research.json"))["generated_utc"])
+              age = (dt.datetime.now(dt.timezone.utc) - t).total_seconds() / 3600
+          except Exception:
+              age = 99
+          print(f"skip={'true' if age < 12 else 'false'}")
+          print(f"ran {age:.1f} hours ago", file=__import__("sys").stderr)
+          EOF
       - uses: actions/setup-python@v6
+        if: steps.fresh.outputs.skip != 'true'
         with: {python-version: '3.12'}
       - name: pdftotext, to read the House PDFs
+        if: steps.fresh.outputs.skip != 'true'
         run: sudo apt-get install -y -qq poppler-utils >/dev/null
       - run: python tools/research.py
+        if: steps.fresh.outputs.skip != 'true'
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
       - name: Fundamentals snapshots for the investor panel (ai-hedge-fund port)
+        if: steps.fresh.outputs.skip != 'true'
         run: python tools/snapshot.py
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
       - name: Commit
+        if: steps.fresh.outputs.skip != 'true'
         run: |
           git config user.name "stock-alerts-bot"
           git config user.email "stock-alerts-bot@users.noreply.github.com"

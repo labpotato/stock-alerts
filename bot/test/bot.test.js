@@ -161,3 +161,15 @@ test("holdings come from the newer of the shared private file and the secret", a
   assert.equal((await holdingsFor(env, down)).tickers.GLDM.shares, 4321);
   assert.equal((await holdingsFor(ENV, fake)).tickers.GLDM.shares, 4321);            // no token: never fetched
 });
+
+test("the Worker starts the research job at 22:45 UTC on weekdays, without inputs", async () => {
+  const { researchDue, dispatchWorkflow } = await import("../src/bot.js");
+  assert.equal(researchDue(Date.parse("2026-11-17T22:45:00Z")), true);       // Tuesday
+  assert.equal(researchDue(Date.parse("2026-11-17T22:41:00Z")), false);
+  assert.equal(researchDue(Date.parse("2026-11-21T22:45:00Z")), false);      // Saturday
+  let seen;
+  const fake = async (url, init) => { seen = { url, body: JSON.parse(init.body) }; return { status: 204 }; };
+  assert.deepEqual(await dispatchWorkflow({ GH_DISPATCH_TOKEN: "x" }, fake, "research.yml"), { ok: true });
+  assert.match(seen.url, /\/actions\/workflows\/research\.yml\/dispatches$/);
+  assert.deepEqual(seen.body, { ref: "main" });
+});
