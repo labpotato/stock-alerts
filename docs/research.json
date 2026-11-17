@@ -1,5 +1,6 @@
 {
  "as_of": "2026-11-17",
+ "generated_utc": "2026-11-17T22:46:01+00:00",
  "fundamentals": [
   {
    "ticker": "BE",
@@ -157,7 +158,7 @@
  ],
  "notes": {
   "fundamentals": "ok: 5 companies",
-  "congress": "ok: 4 new filings read, 0 trades in watched tickers",
+  "congress": "ok: 1 new filings read, 0 trades in watched tickers",
   "source": "day-trader-skill trader-analyst and trader-pelosi (MIT); public SEC and House Clerk data. Congress trades are disclosed up to 45 days late: public and old, not inside information."
  }
 }
