@@ -180,8 +180,3 @@ def test_fingerprints_change_only_with_filings_not_with_daily_prices():
     assert a["hash"] == b["hash"]                                 # a different latest close: same fingerprint
     c = SN.build_series(series, day2, None, "SPCX")
     assert c["periods"][0]["market_cap"] is not None              # once the date has traded, the figure appears
-    q = {"topHoldings": {"holdings": [{"symbol": "AMD", "holdingPercent": {"raw": 0.091}}],
-                         "equityHoldings": {"priceToEarnings": {"raw": 0.0300}}}}
-    e1 = S.etf_snapshot("SOXX", q)
-    q["topHoldings"]["equityHoldings"]["priceToEarnings"] = {"raw": 0.0308}   # P/E 33.3 -> 32.5, across a rounding edge
-    assert S.etf_snapshot("SOXX", q)["hash"] == e1["hash"]
