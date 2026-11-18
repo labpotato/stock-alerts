@@ -1,12 +1,12 @@
 {
- "as_of": "2026-11-17",
+ "as_of": "2026-11-18",
  "source": "SEC XBRL company facts, Yahoo Finance closes, financial time series and fund holdings; layout from ai-hedge-fund (MIT)",
  "stocks": {
   "VOO": {
    "ticker": "VOO",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: VOO  |  Category: Large Blend\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): AAPL 7.7%, NVDA 7.6%, MSFT 5.9%, AMZN 3.6%, GOOGL 2.5%, AVGO 2.4%, META 2.1%, GOOG 2.0%, LLY 1.7%, TSLA 1.7%\nTop 10 together: 37.3%\nHoldings' valuation (fund-weighted): P/E 23.46 | P/B 5.11 | P/S 3.55 | P/CF 16.36 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: technology 38.2%, financial_services 12.0%, healthcare 10.3%, consumer_cyclical 9.2%, communication_services 8.4%\nFund: expense ratio 0.0%, total assets 1,735.7B, 3-year average return 19.5%, 5-year 11.1%",
+   "text": "Fund: VOO  |  Category: Large Blend\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): AAPL 7.7%, NVDA 7.6%, MSFT 5.9%, AMZN 3.6%, GOOGL 2.5%, AVGO 2.4%, META 2.1%, GOOG 2.0%, LLY 1.7%, TSLA 1.7%\nTop 10 together: 37.3%\nHoldings' valuation (fund-weighted): P/E 23.46 | P/B 5.11 | P/S 3.55 | P/CF 16.36 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: technology 38.2%, financial_services 12.0%, healthcare 10.3%, consumer_cyclical 9.2%, communication_services 8.4%\nFund: expense ratio 0.0%, total assets 1,735.7B, 3-year average return 19.1%, 5-year 10.9%",
    "hash": "5c4d0ce0a7aeba09",
    "holdings": [
     [
@@ -60,8 +60,8 @@
    },
    "pe_now": 23.46,
    "name": "Vanguard S&P 500 ETF",
-   "price": 673.1900024414062,
-   "price_date": "2026-11-17"
+   "price": 671.3099975585938,
+   "price_date": "2026-11-18"
   },
   "GOOGL": {
    "ticker": "GOOGL",
@@ -227,7 +227,7 @@
    "name": "Alphabet Inc.",
    "drift": {
     "filed": "2026-10-28",
-    "age_days": 20,
+    "age_days": 21,
     "reaction_pct": -12.71,
     "spy_pct": -1.81,
     "abnormal_pct": -10.9,
@@ -240,10 +240,10 @@
     "until_sessions": 60,
     "fresh": false
    },
-   "price": 280.20001220703125,
-   "price_date": "2026-11-17",
-   "market_cap_now": 3465513750976.5625,
-   "pe_now": 14.703444936979993
+   "price": 282.44000244140625,
+   "price_date": "2026-11-18",
+   "market_cap_now": 3493217950195.3125,
+   "pe_now": 14.820988019191462
   },
   "NVDA": {
    "ticker": "NVDA",
@@ -409,13 +409,13 @@
    "name": "NVIDIA CORP",
    "drift": {
     "filed": "2026-11-17",
-    "age_days": 0,
+    "age_days": 1,
     "status": "waiting for three sessions after the filing"
    },
-   "price": 155.4600067138672,
-   "price_date": "2026-11-17",
-   "market_cap_now": 3775346263046.2646,
-   "pe_now": 19.573651164959713
+   "price": 150.9600067138672,
+   "price_date": "2026-11-18",
+   "market_cap_now": 3666063763046.2646,
+   "pe_now": 19.007065378015568
   },
   "TSLA": {
    "ticker": "TSLA",
@@ -581,7 +581,7 @@
    "name": "Tesla, Inc.",
    "drift": {
     "filed": "2026-10-21",
-    "age_days": 27,
+    "age_days": 28,
     "reaction_pct": -0.4,
     "spy_pct": -1.18,
     "abnormal_pct": 0.78,
@@ -593,10 +593,10 @@
     "view": "none",
     "fresh": false
    },
-   "price": 380.1099853515625,
-   "price_date": "2026-11-17",
-   "market_cap_now": 1345969458129.8828,
-   "pe_now": 418.2627278215919
+   "price": 383.7200012207031,
+   "price_date": "2026-11-18",
+   "market_cap_now": 1358752524322.5098,
+   "pe_now": 422.2350914613144
   },
   "PLTR": {
    "ticker": "PLTR",
@@ -762,7 +762,7 @@
    "name": "Palantir Technologies Inc.",
    "drift": {
     "filed": "2026-11-02",
-    "age_days": 15,
+    "age_days": 16,
     "reaction_pct": -6.74,
     "spy_pct": 1.47,
     "abnormal_pct": -8.21,
@@ -775,16 +775,16 @@
     "until_sessions": 60,
     "fresh": false
    },
-   "price": 156.55999755859375,
-   "price_date": "2026-11-17",
-   "market_cap_now": 402973848276.001,
-   "pe_now": 109.82892238733996
+   "price": 156.6699981689453,
+   "price_date": "2026-11-18",
+   "market_cap_now": 403256981707.00073,
+   "pe_now": 109.90608927981094
   },
   "SOXX": {
    "ticker": "SOXX",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: SOXX  |  Category: Technology\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): AMD 9.2%, NVDA 8.0%, MU 7.9%, AVGO 7.6%, INTC 6.3%, TXN 5.0%, ADI 5.0%, QCOM 4.2%, MRVL 4.0%, KLAC 3.9%\nTop 10 together: 61.0%\nHoldings' valuation (fund-weighted): P/E 33.27 | P/B 10.45 | P/S 11.78 | P/CF 28.48 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: technology 100.0%\nFund: expense ratio 0.3%, total assets 43.7B, 3-year average return 36.2%, 5-year 20.0%",
+   "text": "Fund: SOXX  |  Category: Technology\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): AMD 9.2%, NVDA 8.0%, MU 7.9%, AVGO 7.6%, INTC 6.3%, TXN 5.0%, ADI 5.0%, QCOM 4.2%, MRVL 4.0%, KLAC 3.9%\nTop 10 together: 61.0%\nHoldings' valuation (fund-weighted): P/E 33.27 | P/B 10.45 | P/S 11.78 | P/CF 28.48 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: technology 100.0%\nFund: expense ratio 0.3%, total assets 43.7B, 3-year average return 35.9%, 5-year 20.2%",
    "hash": "7832430c426cc63f",
    "holdings": [
     [
@@ -838,8 +838,8 @@
    },
    "pe_now": 33.27,
    "name": "iShares Semiconductor ETF",
-   "price": 141.4600067138672,
-   "price_date": "2026-11-17"
+   "price": 141.85000610351562,
+   "price_date": "2026-11-18"
   },
   "BE": {
    "ticker": "BE",
@@ -1005,7 +1005,7 @@
    "name": "Bloom Energy Corp",
    "drift": {
     "filed": "2026-10-22",
-    "age_days": 26,
+    "age_days": 27,
     "reaction_pct": -14.51,
     "spy_pct": -1.0,
     "abnormal_pct": -13.51,
@@ -1018,10 +1018,10 @@
     "until_sessions": 60,
     "fresh": false
    },
-   "price": 173.4600067138672,
-   "price_date": "2026-11-17",
-   "market_cap_now": 56251172117.23328,
-   "pe_now": 107.56531156428882
+   "price": 170.97999572753906,
+   "price_date": "2026-11-18",
+   "market_cap_now": 55446931834.487915,
+   "pe_now": 106.02741727106833
   },
   "AIPO": {
    "ticker": "AIPO",
@@ -1081,14 +1081,14 @@
    },
    "pe_now": 31.54,
    "name": "Defiance AI & Power Infrastructure ETF",
-   "price": 22.6299991607666,
-   "price_date": "2026-11-17"
+   "price": 22.690000534057617,
+   "price_date": "2026-11-18"
   },
   "BOTZ": {
    "ticker": "BOTZ",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: BOTZ  |  Category: Technology\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): ISRG 9.9%, 6861.T 8.7%, 6954.T 8.6%, NVDA 7.8%, ABBN.SW 7.7%, 6273.T 4.7%, 6383.T 3.4%, 300124.SZ 2.9%, CGNX 2.6%, TSLA 2.4%\nTop 10 together: 58.7%\nHoldings' valuation (fund-weighted): P/E 35.26 | P/B 4.43 | P/S 5.36 | P/CF 26.75 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: industrials 50.3%, technology 28.7%, healthcare 13.0%, consumer_cyclical 5.7%, communication_services 2.3%\nFund: expense ratio 0.7%, total assets 3.0B, 3-year average return 5.8%, 5-year -4.4%",
+   "text": "Fund: BOTZ  |  Category: Technology\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): ISRG 9.9%, 6861.T 8.7%, 6954.T 8.6%, NVDA 7.8%, ABBN.SW 7.7%, 6273.T 4.7%, 6383.T 3.4%, 300124.SZ 2.9%, CGNX 2.6%, TSLA 2.4%\nTop 10 together: 58.7%\nHoldings' valuation (fund-weighted): P/E 35.26 | P/B 4.43 | P/S 5.36 | P/CF 26.75 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: industrials 50.3%, technology 28.7%, healthcare 13.0%, consumer_cyclical 5.7%, communication_services 2.3%\nFund: expense ratio 0.7%, total assets 3.0B, 3-year average return 5.1%, 5-year -4.6%",
    "hash": "98233ad5879180f9",
    "holdings": [
     [
@@ -1143,13 +1143,13 @@
    "pe_now": 35.26,
    "name": "Global X Robotics & Artificial Intelligence ETF",
    "price": 29.709999084472656,
-   "price_date": "2026-11-17"
+   "price_date": "2026-11-18"
   },
   "XLV": {
    "ticker": "XLV",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: XLV  |  Category: Health\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): LLY 16.9%, JNJ 9.8%, ABBV 7.8%, MRK 5.5%, UNH 5.4%, TMO 3.8%, AMGN 3.7%, GILD 3.1%, ABT 2.7%, PFE 2.6%\nTop 10 together: 61.4%\nHoldings' valuation (fund-weighted): P/E 30.14 | P/B 4.82 | P/S 1.66 | P/CF 17.97 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: healthcare 100.0%\nFund: expense ratio 0.1%, total assets 49.1B, 3-year average return 15.4%, 5-year 8.8%",
+   "text": "Fund: XLV  |  Category: Health\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): LLY 16.9%, JNJ 9.8%, ABBV 7.8%, MRK 5.5%, UNH 5.4%, TMO 3.8%, AMGN 3.7%, GILD 3.1%, ABT 2.7%, PFE 2.6%\nTop 10 together: 61.4%\nHoldings' valuation (fund-weighted): P/E 30.14 | P/B 4.82 | P/S 1.66 | P/CF 17.97 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: healthcare 100.0%\nFund: expense ratio 0.1%, total assets 49.1B, 3-year average return 14.9%, 5-year 8.5%",
    "hash": "4222f729c2ec7400",
    "holdings": [
     [
@@ -1203,14 +1203,14 @@
    },
    "pe_now": 30.14,
    "name": "State Street Health Care Select Sector SPDR ETF",
-   "price": 185.24000549316406,
-   "price_date": "2026-11-17"
+   "price": 181.1699981689453,
+   "price_date": "2026-11-18"
   },
   "XLF": {
    "ticker": "XLF",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: XLF  |  Category: Financial\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): BRK-B 12.7%, JPM 11.2%, V 8.8%, MA 6.5%, BAC 4.1%, GS 3.3%, WFC 3.2%, MS 2.8%, C 2.6%, AXP 2.1%\nTop 10 together: 57.2%\nHoldings' valuation (fund-weighted): P/E 15.26 | P/B 2.28 | P/S 3.26 | P/CF n/a | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: financial_services 98.2%, technology 1.6%, industrials 0.3%\nFund: expense ratio 0.1%, total assets 53.6B, 3-year average return 20.5%, 5-year 9.6%",
+   "text": "Fund: XLF  |  Category: Financial\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): BRK-B 12.7%, JPM 11.2%, V 8.8%, MA 6.5%, BAC 4.1%, GS 3.3%, WFC 3.2%, MS 2.8%, C 2.6%, AXP 2.1%\nTop 10 together: 57.2%\nHoldings' valuation (fund-weighted): P/E 15.26 | P/B 2.28 | P/S 3.26 | P/CF n/a | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: financial_services 98.2%, technology 1.6%, industrials 0.3%\nFund: expense ratio 0.1%, total assets 53.6B, 3-year average return 19.5%, 5-year 9.4%",
    "hash": "b094150602761991",
    "holdings": [
     [
@@ -1264,14 +1264,14 @@
    },
    "pe_now": 15.26,
    "name": "State Street Financial Select Sector SPDR ETF",
-   "price": 57.06999969482422,
-   "price_date": "2026-11-17"
+   "price": 56.41999816894531,
+   "price_date": "2026-11-18"
   },
   "ITA": {
    "ticker": "ITA",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: ITA  |  Category: Industrials\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): GE 20.0%, RTX 17.2%, BA 6.8%, LMT 5.7%, NOC 5.1%, GD 4.9%, TDG 4.8%, HWM 4.0%, LHX 4.0%, HONA 3.8%\nTop 10 together: 76.3%\nHoldings' valuation (fund-weighted): P/E 30.89 | P/B 5.67 | P/S 2.83 | P/CF 21.03 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: industrials 100.0%\nFund: expense ratio 0.4%, total assets 12.2B, 3-year average return 22.7%, 5-year 15.3%",
+   "text": "Fund: ITA  |  Category: Industrials\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): GE 20.0%, RTX 17.2%, BA 6.8%, LMT 5.7%, NOC 5.1%, GD 4.9%, TDG 4.8%, HWM 4.0%, LHX 4.0%, HONA 3.8%\nTop 10 together: 76.3%\nHoldings' valuation (fund-weighted): P/E 30.89 | P/B 5.67 | P/S 2.83 | P/CF 21.03 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: industrials 100.0%\nFund: expense ratio 0.4%, total assets 12.2B, 3-year average return 22.6%, 5-year 15.3%",
    "hash": "651f8cac58519c94",
    "holdings": [
     [
@@ -1325,14 +1325,14 @@
    },
    "pe_now": 30.89,
    "name": "iShares U.S. Aerospace & Defense ETF",
-   "price": 69.5999984741211,
-   "price_date": "2026-11-17"
+   "price": 69.38999938964844,
+   "price_date": "2026-11-18"
   },
   "QQQ": {
    "ticker": "QQQ",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: QQQ  |  Category: Large Growth\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): AAPL 8.2%, NVDA 8.0%, MSFT 6.3%, MU 4.5%, AMZN 4.2%, AMD 3.7%, TSLA 3.4%, META 3.0%, WMT 2.7%, GOOGL 2.7%\nTop 10 together: 46.5%\nHoldings' valuation (fund-weighted): P/E 28.44 | P/B 8.73 | P/S 6.00 | P/CF 22.32 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: technology 58.0%, communication_services 11.1%, consumer_cyclical 11.0%, consumer_defensive 6.8%, industrials 5.3%\nFund: expense ratio 0.2%, total assets 463.8B, 3-year average return 20.4%, 5-year 11.4%",
+   "text": "Fund: QQQ  |  Category: Large Growth\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): AAPL 8.2%, NVDA 8.0%, MSFT 6.3%, MU 4.5%, AMZN 4.2%, AMD 3.7%, TSLA 3.4%, META 3.0%, WMT 2.7%, GOOGL 2.7%\nTop 10 together: 46.5%\nHoldings' valuation (fund-weighted): P/E 28.44 | P/B 8.73 | P/S 6.00 | P/CF 22.32 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: technology 58.0%, communication_services 11.1%, consumer_cyclical 11.0%, consumer_defensive 6.8%, industrials 5.3%\nFund: expense ratio 0.2%, total assets 463.8B, 3-year average return 20.1%, 5-year 11.2%",
    "hash": "ef36e3dad0734eb5",
    "holdings": [
     [
@@ -1386,14 +1386,14 @@
    },
    "pe_now": 28.44,
    "name": "Invesco QQQ Trust",
-   "price": 656.9500122070312,
-   "price_date": "2026-11-17"
+   "price": 659.510009765625,
+   "price_date": "2026-11-18"
   },
   "XLB": {
    "ticker": "XLB",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: XLB  |  Category: Natural Resources\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): LIN 12.8%, NEM 6.1%, VMC 5.1%, ECL 5.1%, APD 4.9%, MLM 4.9%, FCX 4.9%, NUE 4.8%, STLD 4.8%, SHW 4.7%\nTop 10 together: 58.1%\nHoldings' valuation (fund-weighted): P/E 21.94 | P/B 2.74 | P/S 1.71 | P/CF 11.91 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: basic_materials 82.3%, consumer_cyclical 17.7%\nFund: expense ratio 0.1%, total assets 8.4B, 3-year average return 10.8%, 5-year 4.9%",
+   "text": "Fund: XLB  |  Category: Natural Resources\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): LIN 12.8%, NEM 6.1%, VMC 5.1%, ECL 5.1%, APD 4.9%, MLM 4.9%, FCX 4.9%, NUE 4.8%, STLD 4.8%, SHW 4.7%\nTop 10 together: 58.1%\nHoldings' valuation (fund-weighted): P/E 21.94 | P/B 2.74 | P/S 1.71 | P/CF 11.91 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: basic_materials 82.3%, consumer_cyclical 17.7%\nFund: expense ratio 0.1%, total assets 8.4B, 3-year average return 10.3%, 5-year 4.8%",
    "hash": "ba93e523c0166e88",
    "holdings": [
     [
@@ -1447,14 +1447,14 @@
    },
    "pe_now": 21.94,
    "name": "State Street Materials Select Sector SPDR ETF",
-   "price": 50.84000015258789,
-   "price_date": "2026-11-17"
+   "price": 50.459999084472656,
+   "price_date": "2026-11-18"
   },
   "XLP": {
    "ticker": "XLP",
    "kind": "etf",
    "periods": [],
-   "text": "Fund: XLP  |  Category: Consumer Defensive\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): WMT 11.1%, COST 9.1%, PG 7.6%, KO 7.4%, PM 6.6%, MO 4.7%, CL 4.4%, MDLZ 4.3%, PEP 4.1%, TGT 4.0%\nTop 10 together: 63.3%\nHoldings' valuation (fund-weighted): P/E 24.06 | P/B 4.52 | P/S 1.32 | P/CF 14.38 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: consumer_defensive 97.0%, financial_services 1.5%, consumer_cyclical 1.5%\nFund: expense ratio 0.1%, total assets 15.0B, 3-year average return 13.0%, 5-year 7.8%",
+   "text": "Fund: XLP  |  Category: Consumer Defensive\nThis is an exchange-traded fund, not a single company. Judge it as one business made of its holdings: the quality, growth and price of what it owns, and how concentrated it is.\n\nTop holdings (share of the fund): WMT 11.1%, COST 9.1%, PG 7.6%, KO 7.4%, PM 6.6%, MO 4.7%, CL 4.4%, MDLZ 4.3%, PEP 4.1%, TGT 4.0%\nTop 10 together: 63.3%\nHoldings' valuation (fund-weighted): P/E 24.06 | P/B 4.52 | P/S 1.32 | P/CF 14.38 | median market cap n/a\nHoldings' 3-year earnings growth: n/a\nSectors: consumer_defensive 97.0%, financial_services 1.5%, consumer_cyclical 1.5%\nFund: expense ratio 0.1%, total assets 15.0B, 3-year average return 12.6%, 5-year 7.5%",
    "hash": "29d5b02411faf321",
    "holdings": [
     [
@@ -1508,8 +1508,8 @@
    },
    "pe_now": 24.06,
    "name": "State Street Consumer Staples Select Sector SPDR ETF",
-   "price": 91.45999908447266,
-   "price_date": "2026-11-17"
+   "price": 91.18000030517578,
+   "price_date": "2026-11-18"
   },
   "IQQ": {
    "ticker": "IQQ",
@@ -1569,8 +1569,8 @@
    },
    "pe_now": 28.47,
    "name": "iShares Nasdaq 100 ETF",
-   "price": 22.229999542236328,
-   "price_date": "2026-11-17"
+   "price": 22.329999923706055,
+   "price_date": "2026-11-18"
   },
   "SPCX": {
    "ticker": "SPCX",
@@ -1626,9 +1626,9 @@
    "text": "Company: SPCX\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (USD), oldest first:\n  FY to 2023-12-31: revenue 10.4B, operating income 0.5B, net income -4.6B, EPS -0.44\n  FY to 2024-12-31: revenue 14.0B, operating income 0.7B, net income 0.0B, EPS 0.00\n  FY to 2025-12-31: revenue 18.7B, operating income -2.1B, net income -4.9B, EPS -0.51\n\nSummary:\n  Market cap (latest filed): 1,713.6B\n  ROE avg: -0.04  |  Net margin avg: -0.23\n  Gross margin trend (latest-oldest): 0.05\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.44\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-09-30 | ? | 1,713.6B | n/a | -0.02 | 0.57 | -0.02 | -0.09 | 0.44 | 3.08 | n/a | -0.23 | 14.17 | -3.22\n2026-06-30 | ? | 821.0B | n/a | -0.07 | 0.52 | -0.15 | -0.36 | 0.52 | 5.12 | n/a | -1.42 | 21.70 | -5.69",
    "hash": "fc25afe15d9749f6",
    "name": "SPCX",
-   "price": 141.6999969482422,
-   "price_date": "2026-11-17",
-   "market_cap_now": 1767707461929.3213,
+   "price": 143.5,
+   "price_date": "2026-11-18",
+   "market_cap_now": 1790162500000.0,
    "pe_now": null
   },
   "005930.KS": {
@@ -1638,8 +1638,8 @@
     {
      "period": "2026-06-30",
      "filed": null,
-     "market_cap": 1822740050992500.0,
-     "pe": 12.178460096071353,
+     "market_cap": 1602367947000000.0,
+     "pe": 10.706065349876692,
      "roe": 0.2648708411712258,
      "gross_m": 0.5748466171650296,
      "op_m": 0.3687930051571569,
@@ -1647,48 +1647,30 @@
      "de": 0.318849907357518,
      "current": 2.829667380301115,
      "rev_growth": null,
-     "eps": 22539.795494222697,
-     "bvps": 85097.30778425641,
-     "fcf_ps": 21156.878707143016,
-     "shares": 6640218765.0,
+     "eps": 25639.67162811701,
+     "bvps": 96800.65768939149,
+     "fcf_ps": 24066.56364145307,
+     "shares": 5837406000.0,
      "net_income_ttm": 149669173000000.0
-    },
-    {
-     "period": "2026-03-31",
-     "filed": null,
-     "market_cap": 1588538570500000.0,
-     "pe": 19.062370050382594,
-     "roe": 0.17582263244902863,
-     "gross_m": 0.4767820993787233,
-     "op_m": 0.2424392227799576,
-     "net_m": 0.2145902548171078,
-     "de": 0.3095243100130552,
-     "current": 2.53905872666775,
-     "rev_growth": null,
-     "eps": 14190.260669846291,
-     "bvps": 80707.81600861356,
-     "fcf_ps": 8865.537093359484,
-     "shares": 5872601000.0,
-     "net_income_ttm": 83333739000000.0
     }
    ],
    "kind": "company",
    "currency": "KRW",
    "note": "Source: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (KRW), oldest first:\n  FY to 2022-12-31: revenue 302.2T, operating income 43.4T, net income 54.7T, EPS 8,057.00\n  FY to 2023-12-31: revenue 258.9T, operating income 6.6T, net income 14.5T, EPS 2,131.00\n  FY to 2024-12-31: revenue 300.9T, operating income 32.7T, net income 33.6T, EPS 4,950.00\n  FY to 2025-12-31: revenue 333.6T, operating income 43.6T, net income 44.3T, EPS 6,603.00",
-   "roe_avg": 0.2203467368101272,
-   "net_margin_avg": 0.26150674803621865,
-   "gross_margin_trend": 0.09806451778630632,
+   "roe_avg": 0.2648708411712258,
+   "net_margin_avg": 0.30842324125532955,
+   "gross_margin_trend": null,
    "bvps_cagr": null,
    "debt_to_equity_latest": 0.318849907357518,
-   "market_cap_latest": 1822740050992500.0,
+   "market_cap_latest": 1602367947000000.0,
    "eps_growth_yoy": null,
-   "text": "Company: 005930.KS  |  Figures in KRW\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (KRW), oldest first:\n  FY to 2022-12-31: revenue 302.2T, operating income 43.4T, net income 54.7T, EPS 8,057.00\n  FY to 2023-12-31: revenue 258.9T, operating income 6.6T, net income 14.5T, EPS 2,131.00\n  FY to 2024-12-31: revenue 300.9T, operating income 32.7T, net income 33.6T, EPS 4,950.00\n  FY to 2025-12-31: revenue 333.6T, operating income 43.6T, net income 44.3T, EPS 6,603.00\n\nSummary:\n  Market cap (latest filed): 1,822,740.1B\n  ROE avg: 0.22  |  Net margin avg: 0.26\n  Gross margin trend (latest-oldest): 0.10\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.32\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-06-30 | ? | 1,822,740.1B | 12.18 | 0.26 | 0.57 | 0.37 | 0.31 | 0.32 | 2.83 | n/a | 22,539.80 | 85,097.31 | 21,156.88\n2026-03-31 | ? | 1,588,538.6B | 19.06 | 0.18 | 0.48 | 0.24 | 0.21 | 0.31 | 2.54 | n/a | 14,190.26 | 80,707.82 | 8,865.54",
-   "hash": "d55e56caf879f409",
+   "text": "Company: 005930.KS  |  Figures in KRW\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (KRW), oldest first:\n  FY to 2022-12-31: revenue 302.2T, operating income 43.4T, net income 54.7T, EPS 8,057.00\n  FY to 2023-12-31: revenue 258.9T, operating income 6.6T, net income 14.5T, EPS 2,131.00\n  FY to 2024-12-31: revenue 300.9T, operating income 32.7T, net income 33.6T, EPS 4,950.00\n  FY to 2025-12-31: revenue 333.6T, operating income 43.6T, net income 44.3T, EPS 6,603.00\n\nSummary:\n  Market cap (latest filed): 1,602,367.9B\n  ROE avg: 0.26  |  Net margin avg: 0.31\n  Gross margin trend (latest-oldest): n/a\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.32\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-06-30 | ? | 1,602,367.9B | 10.71 | 0.26 | 0.57 | 0.37 | 0.31 | 0.32 | 2.83 | n/a | 25,639.67 | 96,800.66 | 24,066.56",
+   "hash": "3b494f6fce19882a",
    "name": "005930.KS",
-   "price": 190300.0,
-   "price_date": "2026-11-17",
-   "market_cap_now": 1263633630979500.0,
-   "pe_now": 8.442845013779158
+   "price": 194700.0,
+   "price_date": "2026-11-18",
+   "market_cap_now": 1136542948200000.0,
+   "pe_now": 7.593700996797784
   },
   "000660.KS": {
    "ticker": "000660.KS",
@@ -1711,43 +1693,25 @@
      "fcf_ps": 127069.35404520578,
      "shares": 711647617.0,
      "net_income_ttm": 161965390000000.0
-    },
-    {
-     "period": "2026-03-31",
-     "filed": null,
-     "market_cap": 1294387013979000.0,
-     "pe": 17.225791617558784,
-     "roe": 0.45737346839069454,
-     "gross_m": 0.68341612406867,
-     "op_m": 0.5858105664584007,
-     "net_m": 0.5688992143859921,
-     "de": 0.3557645630454853,
-     "current": 2.616823810402469,
-     "rev_growth": null,
-     "eps": 105597.46921272617,
-     "bvps": 230877.9947037142,
-     "fcf_ps": 57180.96233094687,
-     "shares": 711592641.0,
-     "net_income_ttm": 75142382000000.0
     }
    ],
    "kind": "company",
    "currency": "KRW",
    "note": "Source: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (KRW), oldest first:\n  FY to 2022-12-31: revenue 44.6T, operating income 6.8T, net income 2.2T, EPS 3,242.00\n  FY to 2023-12-31: revenue 32.8T, operating income -7.7T, net income -9.1T, EPS -13,244.00\n  FY to 2024-12-31: revenue 66.2T, operating income 23.5T, net income 19.8T, EPS 28,419.00\n  FY to 2025-12-31: revenue 97.1T, operating income 47.2T, net income 42.9T, EPS 60,378.00",
-   "roe_avg": 0.5373326169837134,
-   "net_margin_avg": 0.7125430243444918,
-   "gross_margin_trend": 0.07926176329771617,
+   "roe_avg": 0.6172917655767323,
+   "net_margin_avg": 0.8561868343029915,
+   "gross_margin_trend": null,
    "bvps_cagr": null,
    "debt_to_equity_latest": 0.3284121719207833,
    "market_cap_latest": 1170660329965000.0,
    "eps_growth_yoy": null,
-   "text": "Company: 000660.KS  |  Figures in KRW\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (KRW), oldest first:\n  FY to 2022-12-31: revenue 44.6T, operating income 6.8T, net income 2.2T, EPS 3,242.00\n  FY to 2023-12-31: revenue 32.8T, operating income -7.7T, net income -9.1T, EPS -13,244.00\n  FY to 2024-12-31: revenue 66.2T, operating income 23.5T, net income 19.8T, EPS 28,419.00\n  FY to 2025-12-31: revenue 97.1T, operating income 47.2T, net income 42.9T, EPS 60,378.00\n\nSummary:\n  Market cap (latest filed): 1,170,660.3B\n  ROE avg: 0.54  |  Net margin avg: 0.71\n  Gross margin trend (latest-oldest): 0.08\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.33\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-06-30 | ? | 1,170,660.3B | 7.23 | 0.62 | 0.76 | 0.68 | 0.86 | 0.33 | 2.59 | n/a | 227,592.12 | 368,694.57 | 127,069.35\n2026-03-31 | ? | 1,294,387.0B | 17.23 | 0.46 | 0.68 | 0.59 | 0.57 | 0.36 | 2.62 | n/a | 105,597.47 | 230,877.99 | 57,180.96",
-   "hash": "0061a5fb7566ec35",
+   "text": "Company: 000660.KS  |  Figures in KRW\nAll figures below were publicly filed by their filing dates. Treat the most recent filing shown as the present.\nSource: Yahoo Finance quarterly figures (filing dates not given; prices ~45 days after each quarter end).\nFiscal years (KRW), oldest first:\n  FY to 2022-12-31: revenue 44.6T, operating income 6.8T, net income 2.2T, EPS 3,242.00\n  FY to 2023-12-31: revenue 32.8T, operating income -7.7T, net income -9.1T, EPS -13,244.00\n  FY to 2024-12-31: revenue 66.2T, operating income 23.5T, net income 19.8T, EPS 28,419.00\n  FY to 2025-12-31: revenue 97.1T, operating income 47.2T, net income 42.9T, EPS 60,378.00\n\nSummary:\n  Market cap (latest filed): 1,170,660.3B\n  ROE avg: 0.62  |  Net margin avg: 0.86\n  Gross margin trend (latest-oldest): n/a\n  Book value/share CAGR: n/a\n  Liabilities/equity (latest): 0.33\n\nHistory (trailing-twelve-month periods, newest first):\nperiod | filed | mktcap | P/E | ROE | gross_m | op_m | net_m | L/E | curr | rev_gr | EPS | BVPS | FCF/sh\n2026-06-30 | ? | 1,170,660.3B | 7.23 | 0.62 | 0.76 | 0.68 | 0.86 | 0.33 | 2.59 | n/a | 227,592.12 | 368,694.57 | 127,069.35",
+   "hash": "7bac1e72c6d0dd29",
    "name": "000660.KS",
-   "price": 1098000.0,
-   "price_date": "2026-11-17",
-   "market_cap_now": 781389083466000.0,
-   "pe_now": 4.824420102751581
+   "price": 1144000.0,
+   "price_date": "2026-11-18",
+   "market_cap_now": 814124873848000.0,
+   "pe_now": 5.026536063340446
   }
  },
  "errors": {},
