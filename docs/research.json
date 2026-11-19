@@ -1,6 +1,6 @@
 {
- "as_of": "2026-11-18",
- "generated_utc": "2026-11-18T22:46:04+00:00",
+ "as_of": "2026-11-19",
+ "generated_utc": "2026-11-19T22:46:05+00:00",
  "fundamentals": [
   {
    "ticker": "BE",
@@ -59,6 +59,30 @@
   }
  ],
  "congress": [
+  {
+   "member": "Hon. Michael Rulli",
+   "district": "OH06",
+   "ticker": "GOOGL",
+   "action": "partial sale",
+   "date": "2026-11-04",
+   "filed": "2026-11-18",
+   "amount": "$1,001 - $15,000",
+   "owner": "self",
+   "days_to_disclose": 14,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20036855.pdf"
+  },
+  {
+   "member": "Hon. Michael Rulli",
+   "district": "OH06",
+   "ticker": "NVDA",
+   "action": "partial sale",
+   "date": "2026-10-28",
+   "filed": "2026-11-18",
+   "amount": "$1,001 - $15,000",
+   "owner": "self",
+   "days_to_disclose": 21,
+   "url": "https://disclosures-clerk.house.gov/public_disc/ptr-pdfs/2026/20036855.pdf"
+  },
   {
    "member": "Hon. David J. Taylor",
    "district": "OH02",
@@ -158,7 +182,7 @@
  ],
  "notes": {
   "fundamentals": "ok: 5 companies",
-  "congress": "ok: 0 new filings read, 0 trades in watched tickers",
+  "congress": "ok: 4 new filings read, 2 trades in watched tickers",
   "source": "day-trader-skill trader-analyst and trader-pelosi (MIT); public SEC and House Clerk data. Congress trades are disclosed up to 45 days late: public and old, not inside information."
  }
 }
