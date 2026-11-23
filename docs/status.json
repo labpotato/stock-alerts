@@ -1,6 +1,6 @@
 {
  "schema": 2,
- "generated_utc": "2026-11-23T00:21:04+00:00",
+ "generated_utc": "2026-11-23T00:31:05+00:00",
  "session": "CLOSED",
  "settled_close_date": "2026-11-22",
  "tickers": {
@@ -91,31 +91,31 @@
   "BTC-USD": {
    "label": "BTC-USD",
    "kind": "stock",
-   "price": 61127.6,
+   "price": 61206.9,
    "prev_close": 60094.1,
-   "day_pct": 1.72,
-   "rsi": 26.7,
+   "day_pct": 1.85,
+   "rsi": 27.0,
    "keltner": "WATCH BUY",
    "momentum": "WATCH BUY",
-   "upper": 73454.7,
-   "lower": 62116.1,
-   "ma3": 60006.9,
+   "upper": 73467.3,
+   "lower": 62118.7,
+   "ma3": 60033.3,
    "buy_trigger": {
     "R": 62077.2,
     "K": 66764.5
    },
    "sell_trigger": {},
-   "nearest_trigger_pct": 1.6,
+   "nearest_trigger_pct": 1.4,
    "sigma_pct": 1.507,
-   "z": 1.14,
-   "margin_k_pct": -3.3956,
-   "margin_r_pts": 3.309,
+   "z": 1.23,
+   "margin_k_pct": -3.357,
+   "margin_r_pts": 3.021,
    "knife_edge": false
   },
   "ETH-USD": {
    "label": "ETH-USD",
    "kind": "stock",
-   "price": 1719.52,
+   "price": 1719.57,
    "prev_close": 1682.2,
    "day_pct": 2.22,
    "rsi": 29.8,
@@ -123,7 +123,7 @@
    "momentum": "WATCH BUY",
    "upper": 2138.64,
    "lower": 1714.9,
-   "ma3": 1673.72,
+   "ma3": 1673.74,
    "buy_trigger": {
     "R": 1722.58,
     "K": 1831.08
@@ -132,8 +132,8 @@
    "nearest_trigger_pct": 0.2,
    "sigma_pct": 1.497,
    "z": 1.48,
-   "margin_k_pct": -2.4012,
-   "margin_r_pts": 0.179,
+   "margin_k_pct": -2.4005,
+   "margin_r_pts": 0.174,
    "knife_edge": true
   },
   "005930.KS": {
