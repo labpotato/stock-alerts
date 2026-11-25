@@ -130,3 +130,41 @@ def test_crypto_is_read_around_the_clock():
     cfg = json.load(open(os.path.join(os.path.dirname(__file__), "..", "config.json")))
     assert {"SPCX", "BTC-USD", "ETH-USD"} <= set(cfg["tickers"])
     assert {"BTC-USD", "ETH-USD"} <= set(cfg["not_equity"])
+
+
+def test_a_signal_never_repeats_on_the_same_bar_across_the_day_reset(make_watch):
+    """22-23 Nov: ETH-USD's RSI BUY went out at 00:01 and again at 05:01 UTC, because the day list resets
+    at midnight New York while the reference bar had not changed. The bar memory survives the reset."""
+    w, m = make_watch(tickers=("QQQ", "BOTZ"))
+    state = {"sent": [], "pending": {}, "obs": {}}
+    m.now, m.prices = et(2026, 11, 3, 18, 0), {"BOTZ": 32.50}
+    res, sess, _ = w.poll(state)
+    w.decide(res[0], [], state, sess)
+    m.now, m.prices = et(2026, 11, 4, 9, 45), {"BOTZ": 32.60}
+    res, sess, _ = w.poll(state)
+    first = w.decide(res[0], [], state, sess)
+    assert any("BOTZ" in t.split("\n")[0] for t, _ in first)
+    bar = next(o for o in res[0] if o["t"] == "BOTZ")["d"]["last"]
+    assert state["fired"]["BOTZ:BUY:k"] == bar
+    state["day"] = "2026-11-03"                         # force poll's real day reset on the next reading
+    m.now, m.prices = et(2026, 11, 4, 10, 15), {"BOTZ": 32.65}
+    res, sess, _ = w.poll(state)
+    assert state["sent"] == [] and state["fired"]["BOTZ:BUY:k"] == bar      # reset cleared the day, kept the bar
+    assert not [t for t, _ in w.decide(res[0], [], state, sess) if "BOTZ" in t.split("\n")[0]]
+
+
+def test_market_wide_notes_need_us_stocks_and_the_benchmark_and_come_once_a_day(make_watch):
+    w, m = make_watch(tickers=("QQQ", "BOTZ"))
+    coin = lambda t, mv: {"t": t, "px": 100 * (1 + mv / 100), "d": {"c": [100.0], "sigma": 0.03, "closes60": [100.0] * 6}}
+    rows = [coin("BTC-USD", -6), coin("ETH-USD", -7)]
+    w.CFG["tickers"] = ["QQQ", "BOTZ", "BTC-USD", "ETH-USD"]
+    w.CFG["not_equity"] = ["GLDM", "BTC-USD", "ETH-USD"]
+    keys = {a["key"] for a in w.anomalies(rows, None)}
+    assert "anom:breadth:ALL" not in keys and "anom:market" not in keys      # overnight: only the coins
+    monkey = {"t": "x"}
+    state = {"sent": [], "pending": {}, "obs": {}}
+    w.anomaly_message = lambda a, rows, sess: (a["key"], None)
+    mk = lambda k, kind: {"key": k, "kind": kind, "ticker": None, "text": k}
+    out = w.decide([], [mk("anom:market", "market"), mk("anom:group1:AI", "group1")], state, "REGULAR")
+    assert [t for t, _ in out] == ["anom:market"]                           # one market-wide note
+    assert w.decide([], [mk("anom:group5:AI", "group5")], state, "REGULAR") == []
