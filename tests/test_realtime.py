@@ -266,3 +266,15 @@ def test_signal_shows_the_algorithm_with_its_numbers_and_the_panel(make_watch):
     assert "Investor panel" in text and "leans bullish" in text and "agrees with this BUY" in text
     assert "/panel_gldm" in text and "Strongest view, Buffett" in text
     assert text.index("My algorithm") < text.index("Investor panel") < text.index("Your plan")
+
+
+def test_unusual_moves_show_their_direction_in_colour(make_watch):
+    w, m = make_watch(tickers=("QQQ", "GLDM"))
+    rows = [{"t": "GLDM", "d": {"c": [80.0]}, "ev": {}, "sess": "REG"}]
+    up = {"ticker": "GLDM", "kind": "move", "dir": 1, "title": "Unusual move — GLDM", "chart_head": "x",
+          "note": "up 4.0% today", "text": "<b>$83.20</b>, up <b>4.0%</b> today."}
+    w.odds_text = lambda *a, **k: (None, [])
+    t, _ = w.anomaly_message(up, rows, "REG")
+    assert t.startswith("🟢▲ <b>Unusual move") and "🟢▲ up <b>4.0%" in t
+    t, _ = w.anomaly_message(dict(up, dir=-1, text="<b>$76.80</b>, down <b>4.0%</b> today."), rows, "REG")
+    assert t.startswith("🔴▼ <b>Unusual move") and "🔴▼ down <b>4.0%" in t
