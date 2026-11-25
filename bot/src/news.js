@@ -23,6 +23,8 @@ export const WATCH = {
   TSLA: ["tesla", "elon musk"],
   PLTR: ["palantir"],
   BE: ["bloom energy"],
+  SPCX: ["spacex", "space exploration technologies", "starlink"],
+  ANT: ["anthropic"],
   SOXX: ["semiconductor", "chipmaker", "chip stocks", "tsmc", "asml", "broadcom", "micron"],
   QQQ: ["nasdaq"],
   VOO: ["s&p 500", "wall street", "stock market", "stocks"],
@@ -54,11 +56,11 @@ const gnews = (q, loc) => `https://news.google.com/rss/search?q=${encodeURICompo
 // Google News refuses requests from Cloudflare Workers (HTTP 503, seen 2026-11-10), so each Google
 // search has a Bing News twin. Whichever answers is used; the same headline is only handled once.
 const bing = (q, extra = "") => `https://www.bing.com/news/search?q=${encodeURIComponent(q)}&qft=${encodeURIComponent('sortbydate="1"')}&format=rss${extra}`;
-const Q_STOCKS = 'Nvidia OR Tesla OR Alphabet OR Palantir OR "Bloom Energy"';
+const Q_STOCKS = 'Nvidia OR Tesla OR Alphabet OR Palantir OR "Bloom Energy" OR SpaceX OR Anthropic';
 const Q_MACRO = '"Federal Reserve" OR FOMC OR CPI OR "jobs report" OR tariffs OR "stock market"';
 const Q_KOREA = "삼성전자 OR SK하이닉스 OR 환율";
 export const FEEDS = [
-  { id: "yahoo", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA,GOOGL,TSLA,PLTR,BE&region=US&lang=en-US" },
+  { id: "yahoo", url: "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA,GOOGL,TSLA,PLTR,BE,SPCX,ANT&region=US&lang=en-US" },
   { id: "gnews", url: gnews(Q_STOCKS, "hl=en-US&gl=US&ceid=US:en") },
   { id: "bnews", url: bing(Q_STOCKS) },
   { id: "macro", url: gnews(Q_MACRO, "hl=en-US&gl=US&ceid=US:en") },

@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILLS = os.path.join(ROOT, ".claude", "skills")
 OUT = os.path.join(ROOT, "docs", "research.json")
 STATE = os.path.join(ROOT, "research_state")
-STOCKS = ["NVDA", "GOOGL", "TSLA", "PLTR", "BE"]      # companies that file with the SEC
+STOCKS = ["NVDA", "GOOGL", "TSLA", "PLTR", "BE", "SPCX", "ANT"]   # companies that file with the SEC
 KEEP_DAYS = 45                                       # Congress trades older than this drop off
 
 
