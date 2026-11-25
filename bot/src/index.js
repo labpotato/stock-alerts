@@ -5,6 +5,7 @@ import { buildList } from "./list.js";
 import { feedCheck, recentNews, runMood, runNews } from "./news.js";
 import { enqueuePanel, loadPanel, panelCommand, stepPanel } from "./panel.js";
 import { runPremarket } from "./premarket.js";
+import { holdingsCommand } from "./holdings.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -44,7 +45,13 @@ export default {
     const mood = () => runMood(env, { fetch: doFetch, client, kv: env.NEWS_KV }, true);
     const panel = (arg) => panelCommand(env, { fetch: doFetch, client, kv: env.NEWS_KV }, arg);
     const list = () => buildList(env, doFetch, holdingsFor);
-    ctx.waitUntil(answer(env, update.message, { client, fetch: doFetch, mood, panel, list }));
+    const known = async () => {
+      const r = await doFetch(env.CONFIG_URL, { cf: { cacheTtl: 300 } });
+      const c = r.ok ? await r.json() : {};
+      return new Set([...(c.tickers || []), ...(c.info_tickers || [])]);
+    };
+    const holdings = (text) => holdingsCommand(env, { fetch: doFetch, holdingsFor, known }, text);
+    ctx.waitUntil(answer(env, update.message, { client, fetch: doFetch, mood, panel, list, holdings }));
     return new Response("ok");
   },
 

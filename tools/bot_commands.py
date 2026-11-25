@@ -16,6 +16,7 @@ from snapshot import panel_tickers  # noqa: E402
 BASE = [("list", "Your watchlist: price, today's move, signal state"),
         ("panel", "Investor panel grid (Buffett, Munger, Graham, Lynch, Druckenmiller)"),
         ("mood", "Market mood: what investors are saying now"),
+        ("holdings", "Your holdings; /holdings NVDA 6, cash 405 to change"),
         ("help", "What I can do")]
 
 

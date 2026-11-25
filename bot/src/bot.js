@@ -166,8 +166,9 @@ Type / for the menu:
 /list your watchlist with prices and signal states
 /panel the investor panel (Buffett, Munger, Graham, Lynch, Druckenmiller styles); /panel_nvda etc. for one ticker's reasons
 /mood a quick read of what investors are saying right now
+/holdings your holdings; /holdings NVDA 6, cash 405 to change them (saved only after /confirm)
 Tip: reply to one of my alerts to ask about that alert.
-I can't trade or change anything; I only answer.`;
+I can't trade. The only thing I change is your holdings file, and only after /confirm.`;
 
 /**
  * Answer one message. deps: { client, fetch, now } so tests can run with fakes.
@@ -200,6 +201,13 @@ export async function answer(env, msg, deps) {
                              link_preview_options: { is_disabled: true } }),
     });
   };
+  if (/^\/(holdings|confirm|cancel)\b/i.test(question) && deps.holdings) {   // see or change holdings
+    const out = await deps.holdings(question);
+    if (out) {
+      for (const t of out) await html(t);
+      return sent;
+    }
+  }
   if (/^\/list\b/i.test(question) && deps.list) {   // the watchlist
     await html(await deps.list());
     return sent;
