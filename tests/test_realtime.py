@@ -209,4 +209,4 @@ def test_a_new_listing_shows_its_price_until_it_has_enough_days_for_signals(make
     assert e["keltner"] == "NEW" and e["price"] == 81.905 and e["day_pct"] == 5.01 and e["rsi"] is None
     import json as _j, os
     cfg = _j.load(open(os.path.join(os.path.dirname(__file__), "..", "config.json")))
-    assert "ANT" in cfg["tickers"] and "ANT" not in cfg["ai_group"]
+    assert "ANT" in cfg["tickers"] and "ANT" in cfg["ai_group"]          # Dongmin 2026-11-25
