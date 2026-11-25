@@ -868,7 +868,8 @@ def anomalies(rows, bench):
     rel = bool(mk and mk["unusual"])
     bn = CFG["benchmark"]
     if rel:
-        moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows if o["t"] in CFG["tickers"]]
+        moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows
+                 if o["t"] in CFG["tickers"] and market(o["t"]) == "us" and o["t"] not in CFG.get("not_equity", [])]
         side = "down" if mk["b1"] < 0 else "up"
         n = sum(1 for m in moves if (m < 0) == (mk["b1"] < 0) and abs(m) >= AN["breadth_move_pct"])
         out.append({"key": "anom:market", "kind": "breadth", "ticker": None, "period": 1,
@@ -954,8 +955,11 @@ def anomalies(rows, bench):
                                      f"while the S&amp;P 500 ({bn}) moved <b>{bv:+.1f}%</b>, a gap of "
                                      f"{abs(g5-bv):.1f} points.\n\nMoney appears to be moving "
                                      f"{'into' if g5 > bv else 'out of'} AI-related names.")})
-    moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows if o["t"] in CFG["tickers"]]
-    if moves and not rel:
+    # Only US stocks, and only when the benchmark is in this reading: overnight the coins were the
+    # only tickers left and "2 of 2 down" became a "whole market" message (19-25 Nov, 01:00-05:00 UTC).
+    moves = [(o["px"] / o["d"]["c"][-1] - 1) * 100 for o in rows
+             if o["t"] in CFG["tickers"] and market(o["t"]) == "us" and o["t"] not in CFG.get("not_equity", [])]
+    if moves and bench and not rel:
         dn = sum(1 for m in moves if m <= -AN["breadth_move_pct"])
         if dn / len(moves) >= AN["breadth_frac"]:
             out.append({"key": "anom:breadth:ALL", "kind": "breadth", "ticker": None, "period": 1,
@@ -1438,7 +1442,7 @@ def poll(state):
         # so an after-hours cross is not reported again at the next pre-market.
         # The evening check may run after midnight, so yesterday's alert list is kept for it.
         last = {"day": state.get("day"), "sent": state.get("sent", [])}
-        keep = {k: state.get(k) for k in ("obs", "fx_version", "settled_done", "paused", "splits", "hedge")}
+        keep = {k: state.get(k) for k in ("obs", "fx_version", "settled_done", "paused", "splits", "hedge", "fired")}
         state.clear()
         state.update({"day": today, "sent": [], "pending": {}, "last_day": last})
         state.update({k: v for k, v in keep.items() if v is not None})
@@ -1651,9 +1655,21 @@ def decide(rows, alerts, state, sess):
       - if the second measure agrees later the same day you get one upgrade to STRONG."""
     sent, pending = state["sent"], state["pending"]
     by_t = {o["t"]: o for o in rows}
+    # The day list resets at midnight New York, but a crypto bar settles at midnight UTC and a
+    # signal is judged against the last settled bar: 'fired' remembers, per key, the bar each one
+    # was sent against, so nothing repeats on the same bar across the reset (ETH-USD BUY was sent at
+    # 00:01 and again at 05:01 UTC on 22-23 Nov).
+    fired = state.setdefault("fired", {})
+    bar = lambda t: ((by_t.get(t) or {}).get("d") or {}).get("last")
+    def record(key, t):
+        if key not in sent:
+            sent.append(key)
+        if bar(t):
+            fired[key] = bar(t)
     # "t:SIDE" is the older record format (one entry per side); honour it so an update mid-day
     # never re-sends something already sent.
-    done = lambda t, side, l: f"{t}:{side}:{l}" in sent or f"{t}:{side}" in sent
+    done = lambda t, side, l: (f"{t}:{side}:{l}" in sent or f"{t}:{side}" in sent
+                               or (bar(t) is not None and fired.get(f"{t}:{side}:{l}") == bar(t)))
     out = []
 
     # 1. Thin names in extended hours: send a cross only if the next reading still agrees.
@@ -1671,7 +1687,7 @@ def decide(rows, alerts, state, sess):
     for (t, side), legs in confirmed.items():
         earlier = [l for l in ("k", "r") if l not in legs and done(t, side, l)]
         for l in legs:
-            sent.append(f"{t}:{side}:{l}")
+            record(f"{t}:{side}:{l}", t)
         out.append(signal_message(by_t[t], side, sorted(legs), earlier, by_t[t].get("sess", sess), held=True))
 
     # 2. New signals at this reading, one message per ticker.
@@ -1679,8 +1695,8 @@ def decide(rows, alerts, state, sess):
         t, ev = o["t"], o["ev"]
         if {ev["k"], ev["r"]} == {"BUY", "SELL"}:
             key = f"{t}:MIXED:x"
-            if key not in sent:
-                sent.append(key)
+            if key not in sent and fired.get(key) != bar(t):
+                record(key, t)
                 out.append(mixed_message(o, o.get("sess", sess)))
             continue
         for side in ("BUY", "SELL"):
@@ -1699,11 +1715,11 @@ def decide(rows, alerts, state, sess):
                 act = "fx:{}>{}".format(*fx_action(t, side))
                 if act in sent:
                     for l in legs:
-                        sent.append(f"{t}:{side}:{l}")
+                        record(f"{t}:{side}:{l}", t)
                     continue
                 sent.append(act)
             for l in legs:
-                sent.append(f"{t}:{side}:{l}")
+                record(f"{t}:{side}:{l}", t)
             if earlier:     # the other measure already sent the full alert today: a short upgrade
                 out.append((upgrade_message(o, side, legs, earlier, o.get("sess", sess)),
                             fx_chart(o, side) if is_fx(t) else None))
@@ -1712,18 +1728,34 @@ def decide(rows, alerts, state, sess):
 
     # 3. Unusual movement: at most one message per ticker per day (Dongmin: one message per
     #    ticker). A 1-day and a 3-day finding in the same reading become one message.
+    #    "Today" is the ticker's settled bar (a UTC day for crypto), remembered across the reset.
+    #    Market-wide notes (whole market, breadth, AI group) at most one a day in all.
     told = {k.split(":", 2)[2] for k in sent if k.startswith(("anom:move:", "anom:run:"))}
+    told |= {k[5:] for k, v in fired.items() if k.startswith("anom:") and v == bar(k[5:])}
+    MARKET_WIDE = ("market", "breadth", "group1", "group5")
+    market_told = any(k == "anom:market" or k.startswith(("anom:breadth:", "anom:group1:", "anom:group5:"))
+                      for k in sent)
     for a in merge_ticker_alerts(alerts):
         keys = a.get("keys") or [a["key"]]
         if all(k in sent for k in keys):
             continue
-        if a.get("ticker") and a["kind"] in ("move", "run") and a["ticker"] in told:
-            sent.extend(k for k in keys if k not in sent)       # already told today: stay quiet
-            continue
+        t = a.get("ticker")
+        quiet = (t and a["kind"] in ("move", "run") and t in told) or (not t and a["kind"] in MARKET_WIDE and market_told)
         sent.extend(k for k in keys if k not in sent)
-        if a.get("ticker"):
-            told.add(a["ticker"])
+        if t and bar(t):
+            fired["anom:" + t] = bar(t)
+        if quiet:
+            continue                                    # already told: record, stay quiet
+        if t:
+            told.add(t)
+        elif a["kind"] in MARKET_WIDE:
+            market_told = True
         out.append(anomaly_message(a, rows, sess))
+
+    # Keep the bar memory to the last ten days.
+    if len(fired) > 300:
+        for k in sorted(fired, key=lambda k: fired[k])[:len(fired) - 300]:
+            fired.pop(k)
 
     # 4. This reading becomes the reference for the next one.
     for o in rows:
