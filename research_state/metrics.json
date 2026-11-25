@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-11-24",
+  "as_of": "2026-11-25",
   "companies": [
     {
       "ticker": "BE",
@@ -63,6 +63,22 @@
       "gross_margin": 83.4,
       "operating_margin": 46.9,
       "net_margin": 48.8,
+      "source": "SEC XBRL company facts"
+    },
+    {
+      "ticker": "SPCX",
+      "name": "SPACE EXPLORATION TECHNOLOGIES CORP",
+      "cik": "0001181412",
+      "period_end": "2026-09-30",
+      "revenue_ttm": null,
+      "net_income_ttm": null,
+      "eps_ttm": null,
+      "revenue_growth_yoy": 161.4,
+      "eps_growth_yoy": 197.2,
+      "net_income_growth_yoy": 517.8,
+      "gross_margin": 62.4,
+      "operating_margin": 19.1,
+      "net_margin": 30.2,
       "source": "SEC XBRL company facts"
     },
     {
