@@ -194,3 +194,17 @@ def test_one_reading_goes_out_as_one_message_plus_one_album(make_watch, monkeypa
     plan = w.batch_plan(long)
     assert len(plan["texts"]) == 2 and all(w.plain_len(t) <= 3900 for t in plan["texts"])
     assert sum(t.count("<b>T") for t in plan["texts"]) == 6
+
+
+def test_a_new_listing_shows_its_price_until_it_has_enough_days_for_signals(make_watch):
+    """ANT (Anthropic) listed in November 2026 with a few days of trading: price-only on the board."""
+    import json
+    w, m = make_watch(tickers=("QQQ", "BOTZ", "ANT"))
+    w.NEW_LISTINGS.clear()
+    w.NEW_LISTINGS["ANT"] = {"px": 81.905, "prev": 78.0, "sess": "REGULAR"}
+    w.write_board([], {"generated_utc": "2026-11-25T15:00:00+00:00", "session": "REGULAR", "tickers": {}})
+    e = json.load(open(w.BOARD))["tickers"]["ANT"]
+    assert e["keltner"] == "NEW" and e["price"] == 81.905 and e["day_pct"] == 5.01 and e["rsi"] is None
+    import json as _j, os
+    cfg = _j.load(open(os.path.join(os.path.dirname(__file__), "..", "config.json")))
+    assert "ANT" in cfg["tickers"] and "ANT" not in cfg["ai_group"]

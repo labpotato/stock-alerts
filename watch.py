@@ -1470,6 +1470,7 @@ def write_status(rows, sess, alerts, errs, state=None):
 
 
 BOARD = os.path.join(DATA, "docs", "board.json")
+NEW_LISTINGS = {}       # ticker -> live reading, for listings with fewer than 40 trading days
 
 
 def write_board(rows, status):
@@ -1491,6 +1492,13 @@ def write_board(rows, status):
         if f.get("v") == 2:   # the 20-session range, as ratios to the price (dashboard chart)
             e["fan"] = {k: f[k] for k in ("p10", "p25", "p50", "p75", "p90")}
         tick[t] = e
+    for t, lv in NEW_LISTINGS.items():
+        prev = lv.get("prev")
+        tick[t] = {"label": t, "kind": "stock", "name": full_name(t), "price": sig6(lv["px"]),
+                   "prev_close": sig6(prev) if prev else None,
+                   "day_pct": round((lv["px"] / prev - 1) * 100, 2) if prev else None,
+                   "keltner": "NEW", "momentum": "NEW", "rsi": None, "session": lv.get("sess"),
+                   "as_of": status["generated_utc"], "note": "too few trading days for signals (needs 40)"}
     keep = set(universe()) | set(FX)
     board = {"generated_utc": status["generated_utc"], "session": status["session"],
              "tickers": {t: v for t, v in tick.items() if t in keep},
@@ -1563,9 +1571,20 @@ def poll(state):
     except Exception:
         cache = {}
     set_context(cache, state)
+    NEW_LISTINGS.clear()
     for t in stocks + fxs + own:
         d = cache.get(t)
         if not isinstance(d, dict) or "ema" not in d:
+            # A new listing (ANT, Nov 2026) has too few days for the 40-bar signals: price only, so it
+            # still shows on /list and the dashboard instead of "no reading yet" for weeks.
+            if "fewer than 40" in str((d or {}).get("_err", "")) and market(t) == "us":
+                try:
+                    lv = probe if t == bench else live(t)
+                    if lv.get("px") is not None:
+                        NEW_LISTINGS[t] = lv
+                        continue
+                except Exception as e:
+                    print(f"{t}: {e}", file=sys.stderr)
             errs.append(f"{t}: no cached bars")
             continue
         try:

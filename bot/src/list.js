@@ -1,7 +1,7 @@
 // /list: the watchlist as one message, from the public config.json and docs/board.json (the last
 // reading of every ticker, kept between sessions). Held tickers get a 💼 mark from the private
 // holdings file; share counts are never shown here.
-const STATE = { BUY: "🟢", SELL: "🔴", "WATCH BUY": "🔵", "WATCH SELL": "🟠", NONE: "⚪" };
+const STATE = { BUY: "🟢", SELL: "🔴", "WATCH BUY": "🔵", "WATCH SELL": "🟠", NONE: "⚪", NEW: "🆕" };
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export function groupOf(t, cfg, snaps) {
@@ -37,7 +37,8 @@ export function listMessage(cfg, board, snaps, held) {
       const label = (cfg.fx || {})[t] ? (cfg.fx[t].label || t) : t;
       if (!v) { lines.push(`${(held || new Set()).has(t) ? "💼 " : ""}${esc(label)} — no reading yet`); continue; }
       const d = typeof v.day_pct === "number" ? ` ${v.day_pct >= 0 ? "▲" : "▼"}${Math.abs(v.day_pct).toFixed(1)}%` : "";
-      lines.push(`${(held || new Set()).has(t) ? "💼 " : ""}<b>${esc(label)}</b> ${price(t, v, cfg)}${d} ${STATE[v.keltner] || "⚪"}${STATE[v.momentum] || "⚪"}` +
+      lines.push(`${(held || new Set()).has(t) ? "💼 " : ""}<b>${esc(label)}</b> ${price(t, v, cfg)}${d} ` +
+        (v.keltner === "NEW" ? "🆕 too new for signals" : `${STATE[v.keltner] || "⚪"}${STATE[v.momentum] || "⚪"}`) +
         (typeof v.rsi === "number" ? ` ${Math.round(v.rsi)}` : ""));
     }
     lines.push("");
