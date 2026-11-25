@@ -124,6 +124,7 @@ def make_watch(tmp_path, monkeypatch):
         w.chart = m.chart
         w.get = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no network in tests"))
         w.mpl = lambda: None
+        w._PANEL = {}             # no investor-panel fetch in tests
         w.SENT = []
         w.send = lambda text: w.SENT.append(text)
         w.send_photo = lambda png, cap: (w.SENT.append(cap) or True)

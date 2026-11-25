@@ -189,5 +189,9 @@
   },
   "holdings_repo": "labpotato/portfolio-private",
   "_holdings_repo_note": "Private repo whose holdings.json (v2 shape) the post-close run keeps up to date. Read with the HOLDINGS_TOKEN secret (read-only). The newer of it and HOLDINGS_JSON, by as_of, is used.",
-  "_crypto_note": "BTC-USD and ETH-USD (Dongmin 2026-11-16) trade around the clock, so they are read every run, weekends included, like the Asian listings; their unusual moves are judged on their own, not against the S&P 500. SPCX added the same day; its name is read live from Yahoo."
+  "_crypto_note": "BTC-USD and ETH-USD (Dongmin 2026-11-16) trade around the clock, so they are read every run, weekends included, like the Asian listings; their unusual moves are judged on their own, not against the S&P 500. SPCX added the same day; its name is read live from Yahoo.",
+  "same_as": {
+    "IQQ": "QQQ"
+  },
+  "_same_as_note": "Same index, one report: a signal or unusual move on the key is sent under the value (Dongmin 2026-11-25)."
 }

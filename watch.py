@@ -602,6 +602,133 @@ def plan_text(t, side):
     return "No order. You already hold about your target amount."
 
 
+# ---------------------------------------------------------------- the algorithm and the panel, in every signal
+# Dongmin, 25 Nov: each signal message shows his rule with the numbers that met it, then the
+# investor panel's view of the same ticker (from the bot's public GET /panel; no holdings in it).
+PANEL_URL = CFG.get("panel_url") or "https://stock-alerts-bot.bdongmin10.workers.dev/panel"
+_PANEL = None
+PSIGN = {"bullish": 1, "neutral": 0, "bearish": -1}
+PDOT = {"bullish": "🟢", "neutral": "⚪", "bearish": "🔴"}
+PNAMES = (("buffett", "Buffett"), ("munger", "Munger"), ("graham", "Graham"), ("lynch", "Lynch"),
+          ("druckenmiller", "Druckenmiller"))
+
+
+def panel_data():
+    global _PANEL
+    if _PANEL is None:
+        try:
+            req = urllib.request.Request(PANEL_URL, headers={"User-Agent": "stock-alerts"})
+            _PANEL = json.loads(urllib.request.urlopen(req, timeout=12).read()).get("stocks") or {}
+        except Exception as e:
+            print(f"panel: {e}", file=sys.stderr)
+            _PANEL = {}
+    return _PANEL
+
+
+def panel_view(t):
+    """(score, label, entry) with the same consensus as the bot (bot/src/panel.js), or None."""
+    e = panel_data().get(t)
+    if not e or not e.get("verdicts"):
+        return None
+    v = [x for x in e["verdicts"].values() if not x.get("abstained")]
+    if not v:
+        return 0, "no view", e
+    score = int(round(sum(PSIGN.get(x.get("signal"), 0) * (x.get("confidence") or 0) for x in v) / len(v)))
+    return score, ("leans bullish" if score >= 25 else "leans bearish" if score <= -25 else "mixed"), e
+
+
+def panel_stance(lab, side):
+    if lab in ("mixed", "no view"):
+        return "neither backs nor opposes"
+    return "agrees with" if (lab == "leans bullish") == (side == "BUY") else "leans against"
+
+
+def panel_lines(t, side):
+    if is_fx(t):
+        return []
+    pv = panel_view(t)
+    if pv is None:
+        return ["🏛️ <b>Investor panel</b>: no verdict on this one (it judges companies and ETFs with filings or holdings)."]
+    score, lab, e = pv
+    dots = " ".join(f"{n[0]}{'▫️' if (e['verdicts'].get(k) or {}).get('abstained') else PDOT.get((e['verdicts'].get(k) or {}).get('signal'), '·')}"
+                    for k, n in PNAMES)
+    out = [f"🏛️ <b>Investor panel</b> (judged {esc(e.get('at', '?'))}): {dots} → <b>{lab}</b> ({score:+d}), "
+           f"so it {panel_stance(lab, side)} this {side}."]
+    best = max(((k, n, x) for k, n in PNAMES for x in [e["verdicts"].get(k)] if x and not x.get("abstained")),
+               key=lambda z: z[2].get("confidence") or 0, default=None)
+    if best:
+        k, n, x = best
+        r = str(x.get("reasoning") or "").strip()
+        out.append(f"Strongest view, {n} ({x.get('signal')} {x.get('confidence')}): <i>{esc(r[:240] + ('…' if len(r) > 240 else ''))}</i>")
+    out.append(f"<i>Slow-moving fundamentals from filings: a second opinion, never a trigger. Reasons: /panel_{re.sub(r'[^a-z0-9]', '_', t.lower())}</i>")
+    return out
+
+
+def panel_chip(t):
+    pv = None if is_fx(t) else panel_view(t)
+    if pv is None:
+        return None
+    score, lab, _ = pv
+    return (f"Panel {lab.replace('leans ', '')} {score:+d}",
+            "#2e7d32" if lab == "leans bullish" else "#c62828" if lab == "leans bearish" else "#757575", False)
+
+
+def algo_lines(t, side, ev, ref, when="the previous reading"):
+    """Rule A with the numbers that met it (or not): what Dongmin's own algorithm checked."""
+    m = lambda x: money(t, x)
+    ok = lambda b: "✅" if b else "❌"
+    met = lambda b: ": <b>met</b>." if b else ": not met, so this measure adds nothing."
+    out = ["🧮 <b>My algorithm (Rule A)</b>"]
+    if side == "BUY":
+        a, b, c = ref["ma3"] <= ref["lo"], ev["ma3"] > ev["lo"], ev["ma3"] > ref["ma3"]
+        out.append(f"• <b>Price range BUY</b> needs all three: the 3-day average was at or under the bottom of its range "
+                   f"at {when} ({m(ref['ma3'])} vs {m(ref['lo'])}) {ok(a)}; it is now above it ({m(ev['ma3'])} vs "
+                   f"{m(ev['lo'])}) {ok(b)}; and it is rising ({m(ref['ma3'])} → {m(ev['ma3'])}) {ok(c)}" + met(a and b and c))
+        a, b = ref["rsi"] < 30, ev["rsi"] >= 30
+        out.append(f"• <b>Momentum BUY</b> needs the 14-day score under 30 at {when} ({ref['rsi']:.1f}) {ok(a)} "
+                   f"and back to 30 or more now ({ev['rsi']:.1f}) {ok(b)}" + met(a and b))
+    else:
+        a, b = ref["px"] > ref["up"], ev["px"] <= ev["up"]
+        out.append(f"• <b>Price range SELL</b> needs both: the price above the top of its range at {when} "
+                   f"({m(ref['px'])} vs {m(ref['up'])}) {ok(a)}, and back at or under it now ({m(ev['px'])} vs {m(ev['up'])}) {ok(b)}" + met(a and b))
+        a, b = ref["rsi"] > 70, ev["rsi"] <= 70
+        out.append(f"• <b>Momentum SELL</b> needs the 14-day score over 70 at {when} ({ref['rsi']:.1f}) {ok(a)} "
+                   f"and back to 70 or less now ({ev['rsi']:.1f}) {ok(b)}" + met(a and b))
+    out.append("• The range is the 20-day exponential average ± 2 × the 14-day average true range. Both measures → "
+               "STRONG (also when the other gave the same signal in the last 3 sessions).")
+    if not is_fx(t):
+        out.append("• An order fires only on the official close and only toward your plan: under target → BUY, "
+                   "over target → SELL; AI-group buys wait while the group is over its 30% cap; gaps under $200 are left alone.")
+    return out
+
+
+def twins_of(t):
+    """Tickers that are the same index as t (config same_as: {"IQQ": "QQQ"}): reported once, under t."""
+    return [a for a, b in (CFG.get("same_as") or {}).items() if b == t]
+
+
+def twin_lines(t, side):
+    out = []
+    for a in twins_of(t):
+        out.append(f"🔗 <b>{esc(label(a))}</b> ({esc(full_name(a))}) tracks the same index, so this one report covers it too. "
+                   f"For {esc(label(a))}: {plan_text(a, side) if not is_fx(a) else ''}")
+    return out
+
+
+def fires_chip(t, side, settled_line=None, fires=None):
+    if is_fx(t):
+        return None
+    if settled_line is not None:
+        return ((settled_line.split(" (")[0] if fires else "No order"), "#2e7d32" if fires and side == "BUY"
+                else "#c62828" if fires else "#757575", bool(fires))
+    txt = plan_text(t, side)
+    if "aren't loaded" in txt:
+        return ("Holdings not loaded", "#757575", False)
+    would = "would fire" in txt or "trigger your prepared order" in txt
+    return ("Would fire at close" if would else "No order", "#2e7d32" if would and side == "BUY"
+            else "#c62828" if would else "#757575", would)
+
+
 # The two measures, in words.
 #   "k" = price range  (Keltner channel around the 3-day average)
 #   "r" = momentum     (RSI, a 0-100 score of how hard the price has been rising or falling)
@@ -694,8 +821,9 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     icons = "".join(dot if l in said else "⚪" for l in ("k", "r"))
     title = (f"{'STRONG: ' if strong else ''}Buy {fx_action(t, side)[1]} with {fx_action(t, side)[0]}"
              f" ({label(t)} {side})" if is_fx(t) else f"{verdict} — {label(t)}")
-    lines = [f"{icons} <b>{title}</b>",
-             esc(full_name(t, o)),
+    fchip = fires_chip(t, side)
+    lines = [f"{icons} <b>{title}</b>" + (f" · Fires? <b>{fchip[0]}</b>" if fchip else ""),
+             esc(full_name(t, o)) + (f" · also covers {', '.join(esc(label(a)) for a in twins_of(t))}" if twins_of(t) else ""),
              f"<b>{rate(t, ev['px'])}</b> · {when_text()} · REAL-TIME, {sess_text(t, sess)}",
              ""]
     if is_fx(t):
@@ -719,17 +847,25 @@ def signal_message(o, side, legs, earlier, sess, held=False):
                      "so prices can jump around more.</i>")
     if held:
         lines.append("<i>Checked on two readings 10 minutes apart, to rule out a one-off odd trade.</i>")
+    lines += algo_lines(t, side, ev, ref) + [""]
+    plines = panel_lines(t, side)
+    if plines:
+        lines += plines + [""]
     box, olines = odds_text(t, o["d"], side, legs)
     if olines:
         lines += olines + [""]
-    lines += [f"<b>{'What it means' if is_fx(t) else 'Your plan'}:</b> {plan_text(t, side)}", "",
-              "<i>Alert only. Nothing has been traded.</i>"]
+    lines += [f"<b>{'What it means' if is_fx(t) else 'Your plan'}:</b> {plan_text(t, side)}", ""]
+    tl = twin_lines(t, side)
+    if tl:
+        lines += tl + [""]
+    lines += ["<i>Alert only. Nothing has been traded.</i>"]
     note = {"SELL": "fell back inside its normal range" if "k" in legs else "momentum cooled below 70",
             "BUY": "recovered into its normal range" if "k" in legs else "momentum recovered above 30"}[side]
     head = (f"{verdict}: buy {fx_action(t, side)[1]} with {fx_action(t, side)[0]}" if is_fx(t)
             else f"{verdict} at {money(t, ev['px'])}")
-    png = price_chart(t, full_name(t, o), o["d"], ev, head,
-                      "#2e7d32" if side == "BUY" else "#c62828", note, odds=box)
+    sc = "#2e7d32" if side == "BUY" else "#c62828"
+    png = price_chart(t, full_name(t, o), o["d"], ev, head, sc, note, odds=box,
+                      chips=[(verdict, sc, False), fchip, panel_chip(t)])
     return "\n".join(lines).replace("\n\n\n", "\n\n"), png
 
 
@@ -1214,7 +1350,7 @@ def odds_text(t, d, side=None, legs=()):
     return box, lines
 
 
-def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, target_label="", odds=None):
+def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, target_label="", odds=None, chips=None):
     """Top: price, its normal range (shaded) and 3-day average. Bottom: momentum score.
     odds: a line of text; when given, the chart also draws the time-machine fan (d["fan"])."""
     h = d.get("hist")
@@ -1267,6 +1403,16 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
                     bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=color, lw=0.9),
                     arrowprops=dict(arrowstyle="->", color=color, lw=1.2))
         ax.set_title(f"{label(t)}  ·  {name}", loc="left", fontsize=12, fontweight="bold", pad=22)
+        if chips:   # the scheduled report's chips (signal, "Fires?", panel), right-aligned over the chart
+            fig.canvas.draw()
+            rnd, x = fig.canvas.get_renderer(), 1.0
+            for text, col, filled in reversed([c for c in chips if c]):
+                tt = ax.text(x, 1.085, text, transform=ax.transAxes, ha="right", va="bottom", fontsize=8.5,
+                             fontweight="bold", color="white" if filled else col,
+                             bbox=dict(boxstyle="round,pad=0.35,rounding_size=0.9", fc=col if filled else "white",
+                                       ec=col, lw=1.1))
+                bb = tt.get_window_extent(renderer=rnd).transformed(ax.transAxes.inverted())
+                x = bb.x0 - 0.035
         ax.text(0, 1.02, f"{headline}  ·  {note}", transform=ax.transAxes, fontsize=11,
                 color=color, fontweight="bold")
         ax.legend(loc="upper left", fontsize=8, frameon=False, ncol=3 if not fan else 4)
@@ -1797,6 +1943,12 @@ def decide(rows, alerts, state, sess):
                     and f"{t}:{side}:{l}" not in pending]
             if not legs:
                 continue
+            tw = (CFG.get("same_as") or {}).get(t)
+            if tw in by_t and (side in (by_t[tw]["ev"]["k"], by_t[tw]["ev"]["r"])
+                               or any(done(tw, side, l) for l in ("k", "r"))):
+                for l in legs:      # same index (IQQ = QQQ): one report, under the index
+                    record(f"{t}:{side}:{l}", t)
+                continue
             if CONFIRM_THIN and o.get("sess", sess) in ("PRE", "POST") and t in THIN:
                 for l in legs:
                     pending[f"{t}:{side}:{l}"] = sess
@@ -1833,7 +1985,10 @@ def decide(rows, alerts, state, sess):
         if all(k in sent for k in keys):
             continue
         t = a.get("ticker")
-        quiet = (t and a["kind"] in ("move", "run") and t in told) or (not t and a["kind"] in MARKET_WIDE and market_told)
+        tw = (CFG.get("same_as") or {}).get(t) if t else None
+        twin_told = tw is not None and (tw in told or any(b.get("ticker") == tw for b in alerts))
+        quiet = ((t and a["kind"] in ("move", "run") and (t in told or twin_told))
+                 or (not t and a["kind"] in MARKET_WIDE and market_told))
         sent.extend(k for k in keys if k not in sent)
         if t and bar(t):
             fired["anom:" + t] = bar(t)
@@ -2069,7 +2224,8 @@ def settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day):
             "CONFLICT": f"⚖️ <b>CONFLICT at close — {label(t)}</b>"}[kind]
     verdict = st["signal"] if kind in ("CONFIRMED", "CLOSE") else side
     combo = lambda l: (st[f"{l}_state"] if st[f"{l}_state"] in ("BUY", "SELL") else "—")
-    lines = [head, esc(full_name(t)),
+    chip_fire = None
+    lines = [head, esc(full_name(t)) + (f" · also covers {', '.join(esc(label(a)) for a in twins_of(t))}" if twins_of(t) else ""),
              f"<b>Official close {money(t, st['close'])}</b> · {st['bar_date']} · evening check", ""]
     if kind == "CONFLICT":
         lines += [f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>the two measures disagree</b>", "",
@@ -2089,10 +2245,20 @@ def settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day):
             lines += [why(l, side, ref, ev), f"<i>Deciding margin: {margin_text(l, side, st, t)}.</i>", ""]
         if "STRONG" in verdict and len(sv) < 2:
             lines += ["The other measure gave the same signal within the last 3 sessions, so this counts as STRONG.", ""]
+        lines += algo_lines(t, side, ev, ref, when="the previous close") + [""]
+        plines = panel_lines(t, side)
+        if plines:
+            lines += plines + [""]
         line, fires = fires_settled(t, side, closes, usdsgd, state, st["bar_date"])
         if side == "SELL" and "under target" in line:
             state.setdefault("paused", {})[t] = st["bar_date"]
         lines.append(f"<b>Fires:</b> {esc(line)}")
+        for a in twins_of(t):
+            if a in closes:
+                al, _ = fires_settled(a, side, closes, usdsgd, state, st["bar_date"])
+                lines.append(f"🔗 <b>{esc(label(a))}</b> tracks the same index, so this report covers it too. "
+                             f"Fires for {esc(label(a))}: {esc(al)}")
+        chip_fire = fires_chip(t, side, line, fires)
     e = {"margin_k_pct": st["margin_k_pct"], "margin_r_pts": st["margin_r_pts"],
          "prior_k_pct": st["prior_k_pct"], "knife_k": st["knife_k"], "knife_r": st["knife_r"]}
     legs = (iv | sv) or {"k", "r"}
@@ -2112,7 +2278,9 @@ def settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day):
         if olines:
             i = lines.index("<i>Nothing has been traded.</i>")
             lines[i:i] = olines + [""]
-        png = price_chart(t, full_name(t), d, ev, f"{kind.title()}: {verdict}", color, note, odds=odds_box)
+        png = price_chart(t, full_name(t), d, ev, f"{kind.title()}: {verdict}", color, note, odds=odds_box,
+                          chips=[(verdict if has_side else kind.title(), color, False), chip_fire,
+                                 panel_chip(t) if has_side else None])
     except Exception as ex:
         print(f"settled chart {t}: {ex}", file=sys.stderr)
     return "\n".join(lines).replace("\n\n\n", "\n\n"), png
@@ -2167,6 +2335,11 @@ def settled_pass(state, manual=False):
             iv = seen.get((t, side), set())
             sv = {l for l in ("k", "r") if st[f"{l}_state"] == side}
             kind = ("CONFIRMED" if iv and sv else "FADED" if iv else "CLOSE" if sv else None)
+            tw = (CFG.get("same_as") or {}).get(t)
+            if kind and tw in res and res[tw][0]["bar_date"] == day and (
+                    seen.get((tw, side)) or side in (res[tw][0]["k_state"], res[tw][0]["r_state"])):
+                print(f"evening check: {t} {side} reported under {tw} (same index)")
+                continue
             if kind:
                 out.append(settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day))
     write_settled(res, day, state, notes)
