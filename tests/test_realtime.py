@@ -168,3 +168,29 @@ def test_market_wide_notes_need_us_stocks_and_the_benchmark_and_come_once_a_day(
     out = w.decide([], [mk("anom:market", "market"), mk("anom:group1:AI", "group1")], state, "REGULAR")
     assert [t for t, _ in out] == ["anom:market"]                           # one market-wide note
     assert w.decide([], [mk("anom:group5:AI", "group5")], state, "REGULAR") == []
+
+
+def test_one_reading_goes_out_as_one_message_plus_one_album(make_watch, monkeypatch):
+    """25 Nov: 'why are you sending separate msgs for the stock and crypto'. Everything found in one
+    reading is now one text, then the charts as one album."""
+    w, m = make_watch(tickers=("QQQ", "BOTZ"))
+    m.now = et(2026, 11, 23, 9, 0)
+    texts, albums, photos = [], [], []
+    monkeypatch.setattr(w, "send", lambda t: texts.append(t))
+    monkeypatch.setattr(w, "send_album", lambda items: (albums.append(items) or True))
+    monkeypatch.setattr(w, "send_photo", lambda png, cap: (photos.append(cap) or True))
+    outbox = [("🟢⚪ <b>BUY — NVDA</b>\nNVIDIA Corp\nWhy...", b"png1"),
+              ("🟢⚪ <b>BUY — BTC-USD</b>\nBitcoin\nWhy...", b"png2"),
+              ("⚠️ <b>Unusual move — ETH-USD</b>\nDown 6%.", None)]
+    w.notify_all(outbox)
+    assert len(texts) == 1 and texts[0].startswith("📣 <b>3 alerts in this reading</b>")
+    assert "BUY — NVDA" in texts[0] and "BUY — BTC-USD" in texts[0] and "Unusual move — ETH-USD" in texts[0]
+    assert albums == [[("🟢⚪ BUY — NVDA", b"png1"), ("🟢⚪ BUY — BTC-USD", b"png2")]] and photos == []
+    # A single finding still goes out as before (chart with its explanation as the caption).
+    w.notify_all([("⚠️ <b>Unusual move — XLV</b>\nUp 3%.", b"png")])
+    assert photos == ["⚠️ <b>Unusual move — XLV</b>\nUp 3%."]
+    # Over Telegram's limit the text splits between alerts, never inside one.
+    long = [(f"<b>T{i}</b>\n" + "x" * 900, None) for i in range(6)]
+    plan = w.batch_plan(long)
+    assert len(plan["texts"]) == 2 and all(w.plain_len(t) <= 3900 for t in plan["texts"])
+    assert sum(t.count("<b>T") for t in plan["texts"]) == 6
