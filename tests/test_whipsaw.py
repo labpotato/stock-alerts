@@ -101,7 +101,7 @@ def test_fx_unusual_move_is_direct(make_watch):
     w, _ = make_watch(tickers=("QQQ",), fx=fx)
     o = {"t": "SGDKRW=X", "px": 1058.9, "d": {"c": [1048.8, 1048.8, 1048.8]}, "ev": {}}
     text, png = w.anomaly_message({"ticker": "SGDKRW=X", "kind": "move", "title": "x"}, [o], "REGULAR")
-    assert text.startswith("💱 <b>Big move: the Korean won fell against the Singapore dollar</b>")
+    assert text.startswith("💱🟢▲ <b>Big move: the Korean won fell against the Singapore dollar</b>")
     assert "S$1,000 buys <b>₩1,058,900</b> now, versus ₩1,048,800 at the last close (+1.0%)" in text
     assert "<b>I would wait:</b>" in text
 

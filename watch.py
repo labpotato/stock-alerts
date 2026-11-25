@@ -805,7 +805,8 @@ def fx_chart(o, side=None):
         return price_chart(t, full_name(t, o), o["d"], ev, f"I would buy {to} with {frm}",
                            "#2e7d32" if side == "BUY" else "#c62828", f"{to} favoured",
                            odds=odds_text(t, o["d"], side, ("k", "r"))[0])
-    return price_chart(t, full_name(t, o), o["d"], ev, "Big move", "#ef6c00", "unusual move today")
+    up = ev["px"] >= o["d"]["c"][-1]
+    return price_chart(t, full_name(t, o), o["d"], ev, "Big move", UP_C if up else DOWN_C, "unusual move today")
 
 
 def signal_message(o, side, legs, earlier, sess, held=False):
@@ -1008,7 +1009,7 @@ def anomalies(rows, bench):
                  if o["t"] in CFG["tickers"] and market(o["t"]) == "us" and o["t"] not in CFG.get("not_equity", [])]
         side = "down" if mk["b1"] < 0 else "up"
         n = sum(1 for m in moves if (m < 0) == (mk["b1"] < 0) and abs(m) >= AN["breadth_move_pct"])
-        out.append({"key": "anom:market", "kind": "breadth", "ticker": None, "period": 1,
+        out.append({"key": "anom:market", "kind": "breadth", "ticker": None, "period": 1, "dir": 1 if mk["b1"] >= 0 else -1,
                     "title": f"The whole market is {side} sharply today",
                     "text": (f"The S&amp;P 500 ({bn}) is <b>{mk['b1']:+.1f}%</b> today, an unusually big day for "
                              f"the market itself. <b>{n} of your {len(moves)} stocks</b> are {side} more than "
@@ -1036,7 +1037,7 @@ def anomalies(rows, bench):
         big = abs(zx) >= AN["sigma_single"]
         mid = abs(zx) >= AN["sigma_single_with_abs"] and abs(x) >= floor
         if (big or mid) and vs:
-            out.append({"key": f"anom:move:{t}", "kind": "move", "ticker": t, "shade": 0,
+            out.append({"key": f"anom:move:{t}", "kind": "move", "ticker": t, "shade": 0, "dir": 1 if mv >= 0 else -1,
                         "title": f"Unusual move — {label(t)}", "chart_head": "Unusual move vs the market",
                         "note": f"{'up' if mv > 0 else 'down'} {abs(mv):.1f}% today, market {mk['b1']:+.1f}%",
                         "text": (f"<b>{rate(t, px)}</b>, {'up' if mv > 0 else 'down'} <b>{abs(mv):.1f}%</b> today, "
@@ -1045,7 +1046,7 @@ def anomalies(rows, bench):
                                  f"about {abs(zx):.0f} times its usual daily move. Something specific may be "
                                  f"happening with this one; worth checking the news.")})
         elif big or mid:
-            out.append({"key": f"anom:move:{t}", "kind": "move", "ticker": t, "shade": 0,
+            out.append({"key": f"anom:move:{t}", "kind": "move", "ticker": t, "shade": 0, "dir": 1 if mv >= 0 else -1,
                         "title": f"Unusual move — {label(t)}", "chart_head": "Unusual move",
                         "note": f"{'up' if mv > 0 else 'down'} {abs(mv):.1f}% today",
                         "text": (f"<b>{rate(t, px)}</b>, {'up' if mv > 0 else 'down'} <b>{abs(mv):.1f}%</b> today.\n\n"
@@ -1059,7 +1060,7 @@ def anomalies(rows, bench):
                 run = raw - mk["b3"] / 100            # compared with the market's own 3-day move
             if abs(run / sig) >= AN["sigma_run3"] and abs(run * 100) >= floor:
                 run = raw
-                out.append({"key": f"anom:run:{t}", "kind": "run", "ticker": t, "shade": 3,
+                out.append({"key": f"anom:run:{t}", "kind": "run", "ticker": t, "shade": 3, "dir": 1 if run >= 0 else -1,
                             "title": f"Unusual 3-day {'rise' if run > 0 else 'drop'} — {label(t)}",
                             "chart_head": f"Unusual 3-day {'rise' if run > 0 else 'drop'}",
                             "note": f"{'up' if run > 0 else 'down'} {abs(run*100):.1f}% in 3 trading days",
@@ -1071,7 +1072,7 @@ def anomalies(rows, bench):
         g1 = sum((o["px"] / o["d"]["c"][-1] - 1) * 100 for o in ai) / len(ai)
         b1 = (bench["px"] / bench["d"]["c"][-1] - 1) * 100
         if abs(g1 - b1) >= AN["group_vs_bench_1d_pts"]:
-            out.append({"key": "anom:group1:AI", "kind": "group1", "ticker": None, "period": 1,
+            out.append({"key": "anom:group1:AI", "kind": "group1", "ticker": None, "period": 1, "dir": 1 if g1 >= b1 else -1,
                         "title": "Your AI stocks are moving apart from the market",
                         "text": (f"Today your AI stocks averaged <b>{g1:+.1f}%</b> while the S&amp;P 500 "
                                  f"({bn}) moved <b>{b1:+.1f}%</b>, a gap of {abs(g1-b1):.1f} points.\n\n"
@@ -1085,7 +1086,7 @@ def anomalies(rows, bench):
         if gv and bv is not None:
             g5 = sum(gv) / len(gv)
             if abs(g5 - bv) >= AN["group_vs_bench_5d_pts"]:
-                out.append({"key": "anom:group5:AI", "kind": "group5", "ticker": None, "period": 5,
+                out.append({"key": "anom:group5:AI", "kind": "group5", "ticker": None, "period": 5, "dir": 1 if g5 >= bv else -1,
                             "title": "Your AI stocks have split from the market this week",
                             "text": (f"Over the last 5 trading days your AI stocks averaged <b>{g5:+.1f}%</b> "
                                      f"while the S&amp;P 500 ({bn}) moved <b>{bv:+.1f}%</b>, a gap of "
@@ -1098,7 +1099,7 @@ def anomalies(rows, bench):
     if moves and bench and not rel:
         dn = sum(1 for m in moves if m <= -AN["breadth_move_pct"])
         if dn / len(moves) >= AN["breadth_frac"]:
-            out.append({"key": "anom:breadth:ALL", "kind": "breadth", "ticker": None, "period": 1,
+            out.append({"key": "anom:breadth:ALL", "kind": "breadth", "ticker": None, "period": 1, "dir": -1,
                         "title": "Broad drop across your list",
                         "text": (f"<b>{dn} of your {len(moves)} stocks</b> are down more than "
                                  f"{AN['breadth_move_pct']:.0f}% today.\n\nWhen nearly everything falls "
@@ -1116,7 +1117,7 @@ def fx_move_message(a, o):
     up = px > prev
     strong, weak = (b, q) if up else (q, b)
     sw = CURRENCY.get(strong, strong); ww = CURRENCY.get(weak, weak)
-    return (f"💱 <b>Big move: the {ww.rstrip('s') if ww.endswith('dollars') else ww} fell against the "
+    return (f"💱{'🟢▲' if up else '🔴▼'} <b>Big move: the {ww.rstrip('s') if ww.endswith('dollars') else ww} fell against the "
             f"{sw.rstrip('s') if sw.endswith('dollars') else sw}</b>\n"
             f"{fx_amount(b, unit, whole=True)} buys <b>{fx_amount(q, now)}</b> now, versus "
             f"{fx_amount(q, before)} at the last close ({(now / before - 1) * 100:+.1f}%). An unusually big move "
@@ -1124,8 +1125,22 @@ def fx_move_message(a, o):
             f"moment it says to change money.\n\n<i>{when_text()} · a heads-up, not a signal.</i>")
 
 
+UP_C, DOWN_C = "#2e7d32", "#c62828"     # green up, red down (Dongmin 25 Nov: show the direction in colour)
+
+
+def move_mark(d):
+    return "🟢▲" if d > 0 else "🔴▼" if d < 0 else "⚠️"
+
+
+def colour_moves(text):
+    """'up 4.2%' / 'down 4.2%' in a message gets its coloured arrow."""
+    text = re.sub(r"(<b>)?\bup (<b>)?(\d)", lambda m: f"🟢▲ {m.group(1) or ''}up {m.group(2) or ''}{m.group(3)}", text)
+    return re.sub(r"(<b>)?\bdown (<b>)?(\d)", lambda m: f"🔴▼ {m.group(1) or ''}down {m.group(2) or ''}{m.group(3)}", text)
+
+
 def anomaly_message(a, rows, sess):
-    head = f"⚠️ <b>{esc(a['title'])}</b>"
+    d = a.get("dir", 0)
+    head = f"{move_mark(d)} <b>{esc(a['title'])}</b>"
     if a["ticker"] and is_fx(a["ticker"]) and a.get("kind") == "move":
         o = next(x for x in rows if x["t"] == a["ticker"])
         extra = odds_text(a["ticker"], o["d"])[1]
@@ -1134,14 +1149,14 @@ def anomaly_message(a, rows, sess):
     if a["ticker"]:
         o = next(x for x in rows if x["t"] == a["ticker"])
         body = [head, esc(full_name(a["ticker"], o)), f"{when_text()} · {sess_text(a['ticker'], o.get('sess', sess))}",
-                "", a["text"], ""] + [x for x in odds_text(a["ticker"], o["d"])[1]] + \
+                "", colour_moves(a["text"]), ""] + [x for x in odds_text(a["ticker"], o["d"])[1]] + \
                ["", "<i>A heads-up, not a buy or sell signal on its own.</i>"]
         png = price_chart(a["ticker"], full_name(a["ticker"], o), o["d"], o["ev"], a["chart_head"],
-                          "#ef6c00", a["note"], shade=a.get("shade", 0))
+                          UP_C if d > 0 else DOWN_C if d < 0 else "#ef6c00", a["note"], shade=a.get("shade", 0))
     else:
         body = [head, f"{when_text()} · {SESSION_PLAIN.get(sess, sess)}", "", a["text"], "",
                 "<i>A heads-up, not a buy or sell signal on its own.</i>"]
-        png = group_chart(rows, a["title"], a.get("period", 1))
+        png = group_chart(rows, a["title"], a.get("period", 1))   # its bars are coloured by direction
     return "\n".join(body), png
 
 
@@ -1463,8 +1478,13 @@ def group_chart(rows, title, period):
         bn = CFG["benchmark"]
         ai = set(CFG["ai_group"])
         fig, ax = plt.subplots(figsize=(8, 0.42 * len(vals) + 1.6), dpi=110)
-        cols = ["#263238" if t == bn else ("#7e57c2" if t in ai else "#90a4ae") for t, _ in vals]
-        ax.barh([t for t, _ in vals], [v for _, v in vals], color=cols)
+        cols = ["#263238" if t == bn else (UP_C if v >= 0 else DOWN_C) for t, v in vals]
+        ax.barh([t for t, _ in vals], [v for _, v in vals], color=cols, alpha=0.85,
+                edgecolor=["#7e57c2" if t in ai else (0, 0, 0, 0) for t, _ in vals], linewidth=1.6)
+        for lab_ in ax.get_yticklabels():
+            if lab_.get_text() in ai:
+                lab_.set_color("#7e57c2")
+                lab_.set_fontweight("bold")
         bv = next((v for t, v in vals if t == bn), None)
         if bv is not None:
             ax.axvline(bv, color="#263238", ls="--", lw=1)
@@ -1475,7 +1495,8 @@ def group_chart(rows, title, period):
         ax.set_title(title, loc="left", fontsize=11, fontweight="bold")
         ax.set_xlabel("change today (%)" if period == 1 else "change over 5 trading days (%)")
         from matplotlib.patches import Patch
-        ax.legend(handles=[Patch(color="#7e57c2", label="AI group"), Patch(color="#90a4ae", label="others"),
+        ax.legend(handles=[Patch(color=UP_C, label="up"), Patch(color=DOWN_C, label="down"),
+                           Patch(fc="white", ec="#7e57c2", lw=1.6, label="AI group"),
                            Patch(color="#263238", label="S&P 500")], fontsize=8, frameon=False, loc="lower right")
         ax.grid(axis="x", alpha=0.18)
         buf = io.BytesIO()
