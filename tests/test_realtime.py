@@ -210,3 +210,59 @@ def test_a_new_listing_shows_its_price_until_it_has_enough_days_for_signals(make
     import json as _j, os
     cfg = _j.load(open(os.path.join(os.path.dirname(__file__), "..", "config.json")))
     assert "ANT" in cfg["tickers"] and "ANT" in cfg["ai_group"]          # Dongmin 2026-11-25
+
+
+def _twin_rows(w, m, monkeypatch):
+    real = m.chart
+    w.chart = lambda t, *a, **k: real("QQQ" if t == "IQQ" else t, *a, **k)
+    state = {"sent": [], "pending": {}, "obs": {}}
+    m.now, m.prices = et(2026, 11, 4, 15, 50), {"QQQ": 600.0, "IQQ": 600.0}
+    res, sess, _ = w.poll(state)
+    return res[0], sess, state
+
+
+def test_iqq_and_qqq_are_one_report(make_watch, monkeypatch):
+    """Dongmin, 25 Nov: IQQ and QQQ are the same index, so one fire is reported once (under QQQ)."""
+    w, m = make_watch(tickers=("QQQ", "IQQ"))
+    rows, sess, state = _twin_rows(w, m, monkeypatch)
+    for o in rows:
+        o["ev"]["k"] = "BUY"
+    msgs = w.decide(rows, [], state, sess)
+    heads = [t.split("\n")[0] for t, _ in msgs]
+    assert len(msgs) == 1 and "QQQ" in heads[0] and "IQQ" not in heads[0]
+    assert "also covers IQQ" in msgs[0][0] and "tracks the same index" in msgs[0][0]
+    assert "IQQ:BUY:k" in state["sent"]          # recorded, so it stays quiet for the day
+    # QQQ already told today; IQQ crossing later on its own stays quiet too
+    for o in rows:
+        o["ev"]["k"] = "BUY" if o["t"] == "IQQ" else "NONE"
+    state["sent"].remove("IQQ:BUY:k")
+    state["fired"].pop("IQQ:BUY:k", None)
+    assert w.decide(rows, [], state, sess) == []
+
+
+def test_iqq_alone_still_reports(make_watch, monkeypatch):
+    w, m = make_watch(tickers=("QQQ", "IQQ"))
+    rows, sess, state = _twin_rows(w, m, monkeypatch)
+    for o in rows:
+        o["ev"]["k"] = "BUY" if o["t"] == "IQQ" else "NONE"
+    msgs = w.decide(rows, [], state, sess)
+    assert len(msgs) == 1 and "IQQ" in msgs[0][0].split("\n")[0]
+
+
+def test_signal_shows_the_algorithm_with_its_numbers_and_the_panel(make_watch):
+    w, m = make_watch(tickers=("QQQ", "GLDM"))
+    w._PANEL = {"GLDM": {"at": "2026-11-24", "price": 80, "verdicts": {
+        "buffett": {"signal": "bullish", "confidence": 70, "reasoning": "Gold is a store of value."},
+        "munger": {"signal": "neutral", "confidence": 40, "reasoning": "Too hard."},
+        "graham": {"signal": "bearish", "confidence": 20, "reasoning": "No earnings."},
+        "lynch": {"abstained": True, "signal": "neutral", "confidence": 0, "reasoning": ""},
+        "druckenmiller": {"signal": "bullish", "confidence": 60, "reasoning": "Trend up."}}}}
+    state = {"sent": [], "pending": {}, "obs": {}}
+    m.now, m.prices = et(2026, 11, 4, 15, 50), {"GLDM": 80.38}
+    res, sess, _ = w.poll(state)
+    text = next(t for t, _ in w.decide(res[0], [], state, sess) if "GLDM" in t.split("\n")[0])
+    assert "My algorithm (Rule A)" in text and "Price range BUY" in text and "✅" in text
+    assert "Fires? <b>" in text.split("\n")[0]
+    assert "Investor panel" in text and "leans bullish" in text and "agrees with this BUY" in text
+    assert "/panel_gldm" in text and "Strongest view, Buffett" in text
+    assert text.index("My algorithm") < text.index("Investor panel") < text.index("Your plan")

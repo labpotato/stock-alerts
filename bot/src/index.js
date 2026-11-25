@@ -4,6 +4,7 @@ import { answer, dispatchAlerter, dispatchWorkflow, holdingsFor, isAllowed, rese
 import { buildList } from "./list.js";
 import { feedCheck, recentNews, runMood, runNews } from "./news.js";
 import { enqueuePanel, loadPanel, panelCommand, stepPanel } from "./panel.js";
+import { runPremarket } from "./premarket.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -53,6 +54,9 @@ export default {
     const doFetch = (u, o) => fetch(u, o);
     if (new Date(controller.scheduledTime).getUTCMinutes() % 10 === 0) ctx.waitUntil(dispatchAlerter(env, doFetch));
     if (researchDue(controller.scheduledTime)) ctx.waitUntil(dispatchWorkflow(env, doFetch, "research.yml"));
+    ctx.waitUntil(runPremarket(env, { fetch: doFetch, holdingsFor, now: () => controller.scheduledTime })
+      .then((r) => { if (r.sent) console.log("premarket sent", r.day); })
+      .catch((e) => console.log("premarket error:", e && e.message)));
     if (env.NEWS_KV && env.NEWS !== "off") {
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
       ctx.waitUntil(runNews(env, { fetch: doFetch, client, kv: env.NEWS_KV })
