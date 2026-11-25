@@ -12,7 +12,7 @@ def test_the_menu_has_the_general_commands_and_one_panel_command_per_covered_tic
     cfg = json.load(open(os.path.join(ROOT, "config.json")))
     cmds = B.commands(cfg)
     names = [c["command"] for c in cmds]
-    assert names[:4] == ["list", "panel", "mood", "help"]
+    assert names[:5] == ["list", "panel", "mood", "holdings", "help"]
     assert {"panel_nvda", "panel_soxx", "panel_spcx", "panel_005930_ks", "panel_000660_ks"} <= set(names)
     assert "panel_gldm" not in names and "panel_btc_usd" not in names           # no company financials
     assert not any("usdsgd" in n for n in names)
