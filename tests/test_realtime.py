@@ -200,6 +200,8 @@ def test_a_new_listing_shows_its_price_until_it_has_enough_days_for_signals(make
     """ANT (Anthropic) listed in November 2026 with a few days of trading: price-only on the board."""
     import json
     w, m = make_watch(tickers=("QQQ", "BOTZ", "ANT"))
+    import os as _os
+    _os.makedirs(_os.path.dirname(w.BOARD), exist_ok=True)
     w.NEW_LISTINGS.clear()
     w.NEW_LISTINGS["ANT"] = {"px": 81.905, "prev": 78.0, "sess": "REGULAR"}
     w.write_board([], {"generated_utc": "2026-11-25T15:00:00+00:00", "session": "REGULAR", "tickers": {}})
