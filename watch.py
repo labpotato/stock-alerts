@@ -1062,6 +1062,80 @@ def plain_len(html):
     return len(re.sub(r"<[^>]+>", "", html).replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"))
 
 
+def send_album(items):
+    """Several charts as one Telegram album (2 to 10 photos), each captioned with its title line."""
+    if not TOK or not CHAT:
+        print("no telegram credentials; album not sent: " + " | ".join(c for c, _ in items))
+        return True
+    b = "----stockalerts" + uuid.uuid4().hex
+    media = [{"type": "photo", "media": f"attach://p{i}", "caption": c[:1000]} for i, (c, _) in enumerate(items)]
+    parts = [f'--{b}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{CHAT}\r\n'.encode(),
+             f'--{b}\r\nContent-Disposition: form-data; name="media"\r\n\r\n{json.dumps(media)}\r\n'.encode()]
+    for i, (_, png) in enumerate(items):
+        parts.append(f'--{b}\r\nContent-Disposition: form-data; name="p{i}"; filename="chart{i}.png"\r\n'
+                     f'Content-Type: image/png\r\n\r\n'.encode() + png + b"\r\n")
+    parts.append(f"--{b}--\r\n".encode())
+    req = urllib.request.Request(f"https://api.telegram.org/bot{TOK}/sendMediaGroup", data=b"".join(parts),
+                                 headers={"Content-Type": f"multipart/form-data; boundary={b}"})
+    for i in range(3):
+        try:
+            urllib.request.urlopen(req, timeout=60).read()
+            return True
+        except urllib.error.HTTPError as e:
+            print(f"telegram album {e.code}: {e.read()[:300]}", file=sys.stderr)
+            if e.code < 500:
+                return False
+        except Exception as e:
+            print(f"telegram album: {e}", file=sys.stderr)
+        time.sleep(2 + 2 * i)
+    return False
+
+
+def title_of(text):
+    """A message's first line as plain text, for a chart caption."""
+    import html as _html
+    return _html.unescape(re.sub(r"<[^>]+>", "", text.split("\n", 1)[0])).strip()
+
+
+SEP = "\n\n━━━━━━━━━━\n\n"
+
+
+def batch_plan(outbox, limit=3900):
+    """Everything found in one reading goes out together (Dongmin, 25 Nov: not separate messages for
+    stocks and crypto): one text with every alert, split only where Telegram's 4,096-character limit
+    forces it, then the charts as one album (or one photo)."""
+    if len(outbox) <= 1:
+        return {"single": outbox[0] if outbox else None, "texts": [], "charts": []}
+    head = f"📣 <b>{len(outbox)} alerts in this reading</b> · {when_text()}"
+    texts, cur = [], head
+    for text, _ in outbox:
+        if plain_len(cur) + plain_len(text) + len(SEP) > limit and cur != head:
+            texts.append(cur)
+            cur = text
+        else:
+            cur = cur + SEP + text
+    texts.append(cur)
+    charts = [(title_of(t), png) for t, png in outbox if png]
+    return {"single": None, "texts": texts, "charts": charts}
+
+
+def notify_all(outbox):
+    plan = batch_plan(outbox)
+    if plan["single"]:
+        notify(*plan["single"])
+        return
+    for t in plan["texts"]:
+        send(t)
+        time.sleep(0.7)
+    charts = plan["charts"]
+    while charts:
+        group, charts = charts[:10], charts[10:]
+        if len(group) == 1 or not send_album(group):
+            for cap, png in group:
+                send_photo(png, cap)
+        time.sleep(0.7)
+
+
 def notify(text, png=None):
     """Chart with the explanation as its caption; Telegram caps captions at 1024 characters."""
     if png is not None:
@@ -2163,9 +2237,7 @@ def main():
         print(f"hedge check failed: {e}", file=sys.stderr)
     # Save memory BEFORE sending, so a crash mid-send can never cause a repeat.
     json.dump(state, open(STATE, "w"))
-    for text, png in outbox:
-        notify(text, png)
-        time.sleep(0.7)
+    notify_all(outbox)
     if MODE == "digest":
         send(digest(rows, sess, alerts))
     if MODE == "buy-watch":
