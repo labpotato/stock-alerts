@@ -818,23 +818,17 @@ def signal_message(o, side, legs, earlier, sess, held=False):
     strong = said == {"k", "r"}
     verdict = f"STRONG {side}" if strong else side
     dot = "🟢" if side == "BUY" else "🔴"
-    combo = lambda l: side if l in said else "—"
     icons = "".join(dot if l in said else "⚪" for l in ("k", "r"))
-    title = (f"{'STRONG: ' if strong else ''}Buy {fx_action(t, side)[1]} with {fx_action(t, side)[0]}"
-             f" ({label(t)} {side})" if is_fx(t) else f"{verdict} — {label(t)}")
     fchip = fires_chip(t, side)
-    lines = [f"{icons} <b>{title}</b>" + (f" · Fires? <b>{fchip[0]}</b>" if fchip else ""),
-             esc(full_name(t, o)) + (f" · also covers {', '.join(esc(label(a)) for a in twins_of(t))}" if twins_of(t) else ""),
-             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · REAL-TIME, {sess_text(t, sess)}",
-             ""]
+    lines = head_block(icons, f"{verdict} SIGNAL", t, ev["px"], o["d"]["c"][-1],
+                       full_name(t, o) + (f" · also covers {', '.join(label(a) for a in twins_of(t))}" if twins_of(t) else ""),
+                       [legs_line(*(side if l in said else "NONE" for l in ("k", "r")), fchip[0] if fchip else None)],
+                       f"{when_text()} · REAL-TIME, {sess_text(t, sess)}")
     if is_fx(t):
         lines += [fx_do(t, side, ev), ""]
     e = o.get("edge") or {}
     if any(e.get(f"knife_{l}") for l in legs):
         lines += [knife_line(e, legs), ""]
-    lines += [
-             f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>{verdict}</b>",
-             ""]
     for l in ("k", "r"):
         if l in legs:
             lines.append(why(l, side, ref, ev))
@@ -881,9 +875,10 @@ def upgrade_message(o, side, legs, earlier, sess):
                 f"<i>{when_text()} · REAL-TIME · alert only.</i>")
     dot = "🟢" if side == "BUY" else "🔴"
     new, old = LEG[legs[0]], LEG[earlier[0]]
-    lines = [f"{dot}{dot} <b>Now STRONG {side} — {label(t)}</b>",
-             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · REAL-TIME, {sess_text(t, sess)}", "",
-             f"{new} now also says {side}, agreeing with {old.lower()} earlier today. "
+    lines = head_block(dot + dot, f"NOW STRONG {side}", t, ev["px"], o["d"]["c"][-1], full_name(t, o),
+                       [legs_line(side, side, (fires_chip(t, side) or [None])[0])],
+                       f"{when_text()} · REAL-TIME, {sess_text(t, sess)}")
+    lines += [f"{new} now also says {side}, agreeing with {old.lower()} earlier today. "
              f"Both measures say {side}."]
     e = o.get("edge") or {}
     if any(e.get(f"knife_{l}") for l in legs):
@@ -901,6 +896,27 @@ def knife_line(e, legs):
     return f"⚠️ <b>KNIFE-EDGE</b>: {', '.join(bits)}. A tiny move would flip it."
 
 
+RULE = "━━━━━━━━━━━━━━━━"
+
+
+def head_block(mark, kind, t, px, prev, name, extra=(), when=None):
+    """The top of every ticker message (Dongmin 26 Nov, "better header"): what it is and which ticker,
+    the price and today's change, the full name, the measures and Fires?, when; then a rule."""
+    chg = (px / prev - 1) * 100 if prev else None
+    move = (f"  {'▲' if chg > 0 else '▼' if chg < 0 else '■'} <b>{chg:+.2f}%</b> today" if chg is not None else "")
+    out = [f"{mark} <b>{kind} · {esc(label(t))}</b>", f"<b>{rate(t, px)}</b>{move}", f"<i>{esc(name)}</i>"]
+    out += [x for x in extra if x]
+    out += [f"🕐 {when or when_text()}", RULE, ""]
+    return out
+
+
+def legs_line(k, r_, fires=None):
+    dot = lambda v: {"BUY": "🟢", "SELL": "🔴"}.get(v, "⚪")
+    show = lambda v: v if v in ("BUY", "SELL") else "—"
+    return (f"Price range {dot(k)} <b>{show(k)}</b> · Momentum {dot(r_)} <b>{show(r_)}</b>"
+            + (f" · Fires? <b>{fires}</b>" if fires else ""))
+
+
 def mixed_message(o, sess):
     t, ev, ref = o["t"], o["ev"], o["ref"]
     if is_fx(t):
@@ -909,9 +925,9 @@ def mixed_message(o, sess):
                 f"The two measures disagree, so neither is favoured. No need to change money.\n\n"
                 f"<i>{when_text()} · REAL-TIME · alert only.</i>"), None
     kside, rside = ev["k"], ev["r"]
-    lines = [f"⚠️ <b>MIXED — {label(t)}</b>", esc(full_name(t, o)),
-             f"<b>{rate(t, ev['px'])}</b> · {when_text()} · {sess_text(t, sess)}", "",
-             f"Price range <b>{kside}</b> + Momentum <b>{rside}</b>  →  <b>the two measures disagree</b>", "",
+    lines = head_block("🟠", "MIXED", t, ev["px"], o["d"]["c"][-1], full_name(t, o),
+                       [legs_line(kside, rside, "No order")], f"{when_text()} · {sess_text(t, sess)}")
+    lines += ["<b>The two measures disagree.</b>", "",
              why("k", kside, ref, ev), "", why("r", rside, ref, ev), "",
              ("<b>What it means:</b> the two measures disagree, so <b>neither currency is favoured</b>; no need to change money."
               if is_fx(t) else "<b>Your plan:</b> your rules say a mixed signal triggers nothing."), ""]
@@ -1148,13 +1164,16 @@ def anomaly_message(a, rows, sess):
                 (fx_chart(o) if o.get("ev", {}).get("up") else None))
     if a["ticker"]:
         o = next(x for x in rows if x["t"] == a["ticker"])
-        body = [head, esc(full_name(a["ticker"], o)), f"{when_text()} · {sess_text(a['ticker'], o.get('sess', sess))}",
-                "", colour_moves(a["text"]), ""] + [x for x in odds_text(a["ticker"], o["d"])[1]] + \
+        kind = ("UNUSUAL 3-DAY " if a.get("kind") == "run" else "UNUSUAL ") + ("RISE" if d > 0 else "DROP" if d < 0 else "MOVE")
+        body = head_block(move_mark(d), kind, a["ticker"], o["px"], o["d"]["c"][-1], full_name(a["ticker"], o),
+                          when=f"{when_text()} · {sess_text(a['ticker'], o.get('sess', sess))}")
+        body += [colour_moves(a["text"]), ""] + [x for x in odds_text(a["ticker"], o["d"])[1]] + \
                ["", "<i>A heads-up, not a buy or sell signal on its own.</i>"]
         png = price_chart(a["ticker"], full_name(a["ticker"], o), o["d"], o["ev"], a["chart_head"],
                           UP_C if d > 0 else DOWN_C if d < 0 else "#ef6c00", a["note"], shade=a.get("shade", 0))
     else:
-        body = [head, f"{when_text()} · {SESSION_PLAIN.get(sess, sess)}", "", a["text"], "",
+        body = [f"{move_mark(d)} <b>MARKET · {esc(a['title'])}</b>", f"🕐 {when_text()} · {SESSION_PLAIN.get(sess, sess)}",
+                RULE, "", colour_moves(a["text"]), "",
                 "<i>A heads-up, not a buy or sell signal on its own.</i>"]
         png = group_chart(rows, a["title"], a.get("period", 1))   # its bars are coloured by direction
     return "\n".join(body), png
@@ -1213,89 +1232,26 @@ def plain_len(html):
     return len(re.sub(r"<[^>]+>", "", html).replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"))
 
 
-def send_album(items):
-    """Several charts as one Telegram album (2 to 10 photos), each captioned with its title line."""
-    if not TOK or not CHAT:
-        print("no telegram credentials; album not sent: " + " | ".join(c for c, _ in items))
-        return True
-    b = "----stockalerts" + uuid.uuid4().hex
-    media = [{"type": "photo", "media": f"attach://p{i}", "caption": c[:1000]} for i, (c, _) in enumerate(items)]
-    parts = [f'--{b}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{CHAT}\r\n'.encode(),
-             f'--{b}\r\nContent-Disposition: form-data; name="media"\r\n\r\n{json.dumps(media)}\r\n'.encode()]
-    for i, (_, png) in enumerate(items):
-        parts.append(f'--{b}\r\nContent-Disposition: form-data; name="p{i}"; filename="chart{i}.png"\r\n'
-                     f'Content-Type: image/png\r\n\r\n'.encode() + png + b"\r\n")
-    parts.append(f"--{b}--\r\n".encode())
-    req = urllib.request.Request(f"https://api.telegram.org/bot{TOK}/sendMediaGroup", data=b"".join(parts),
-                                 headers={"Content-Type": f"multipart/form-data; boundary={b}"})
-    for i in range(3):
-        try:
-            urllib.request.urlopen(req, timeout=60).read()
-            return True
-        except urllib.error.HTTPError as e:
-            print(f"telegram album {e.code}: {e.read()[:300]}", file=sys.stderr)
-            if e.code < 500:
-                return False
-        except Exception as e:
-            print(f"telegram album: {e}", file=sys.stderr)
-        time.sleep(2 + 2 * i)
-    return False
-
-
-def title_of(text):
-    """A message's first line as plain text, for a chart caption."""
-    import html as _html
-    return _html.unescape(re.sub(r"<[^>]+>", "", text.split("\n", 1)[0])).strip()
-
-
-SEP = "\n\n━━━━━━━━━━\n\n"
-
-
-def batch_plan(outbox, limit=3900):
-    """Everything found in one reading goes out together (Dongmin, 25 Nov: not separate messages for
-    stocks and crypto): one text with every alert, split only where Telegram's 4,096-character limit
-    forces it, then the charts as one album (or one photo)."""
-    if len(outbox) <= 1:
-        return {"single": outbox[0] if outbox else None, "texts": [], "charts": []}
-    head = f"📣 <b>{len(outbox)} alerts in this reading</b> · {when_text()}"
-    texts, cur = [], head
-    for text, _ in outbox:
-        if plain_len(cur) + plain_len(text) + len(SEP) > limit and cur != head:
-            texts.append(cur)
-            cur = text
-        else:
-            cur = cur + SEP + text
-    texts.append(cur)
-    charts = [(title_of(t), png) for t, png in outbox if png]
-    return {"single": None, "texts": texts, "charts": charts}
-
-
 def notify_all(outbox):
-    plan = batch_plan(outbox)
-    if plan["single"]:
-        notify(*plan["single"])
-        return
-    for t in plan["texts"]:
-        send(t)
-        time.sleep(0.7)
-    charts = plan["charts"]
-    while charts:
-        group, charts = charts[:10], charts[10:]
-        if len(group) == 1 or not send_album(group):
-            for cap, png in group:
-                send_photo(png, cap)
-        time.sleep(0.7)
+    """One message per alert, each with its own chart (Dongmin 26 Nov: no combined messages)."""
+    for i, (text, png) in enumerate(outbox):
+        if i:
+            time.sleep(0.7)
+        notify(text, png)
 
 
 def notify(text, png=None):
-    """Chart with the explanation as its caption; Telegram caps captions at 1024 characters."""
+    """The chart with the header block as its caption, then the rest as a text right under it.
+    A message short enough for a caption (1024 characters) goes as one photo."""
     if png is not None:
         if plain_len(text) <= 1000:
             if send_photo(png, text):
                 return
         else:
-            if send_photo(png, text.split("\n", 1)[0]):
-                send(text)
+            head, sep, body = text.partition(RULE)
+            cap = head.rstrip() if sep and plain_len(head) <= 1000 else text.split("\n", 1)[0]
+            if send_photo(png, cap):
+                send(body.strip() if sep and cap != text.split("\n", 1)[0] else text)
                 return
     send(text)
 
@@ -1377,10 +1333,17 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
         xs, xt = list(range(n)), n
         x2 = xs + [xt]
         up, lo = h["up"] + [ev["up"]], h["lo"] + [ev["lo"]]
-        fig = plt.figure(figsize=(9, 6.6), dpi=110)
-        gs = fig.add_gridspec(2, 1, height_ratios=[3, 1.25], hspace=0.07)
-        ax, ax2 = fig.add_subplot(gs[0]), None
-        ax2 = fig.add_subplot(gs[1], sharex=ax)
+        fig = plt.figure(figsize=(9, 7.4), dpi=110)
+        gs = fig.add_gridspec(3, 1, height_ratios=[0.62, 3, 1.15], hspace=0.08)
+        hd = fig.add_subplot(gs[0])
+        hd.axis("off")
+        ax = fig.add_subplot(gs[1])
+        ax2 = fig.add_subplot(gs[2], sharex=ax)
+        for a_ in (ax, ax2):
+            for sp in ("top", "right"):
+                a_.spines[sp].set_visible(False)
+            for sp in ("left", "bottom"):
+                a_.spines[sp].set_color("#b0bec5")
         ax.fill_between(x2, lo, up, color="#90caf9", alpha=0.30, lw=0, label="normal price range")
         ax.plot(x2, up, color="#64b5f6", lw=0.8)
         ax.plot(x2, lo, color="#64b5f6", lw=0.8)
@@ -1417,25 +1380,42 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
                     fontsize=9, color=color, fontweight="bold",
                     bbox=dict(boxstyle="round,pad=0.35", fc="white", ec=color, lw=0.9),
                     arrowprops=dict(arrowstyle="->", color=color, lw=1.2))
-        ax.set_title(f"{label(t)}  ·  {name}", loc="left", fontsize=12, fontweight="bold", pad=22)
-        if chips:   # the scheduled report's chips (signal, "Fires?", panel), right-aligned over the chart
-            fig.canvas.draw()
-            rnd, x = fig.canvas.get_renderer(), 1.0
-            for text, col, filled in reversed([c for c in chips if c]):
-                tt = ax.text(x, 1.085, text, transform=ax.transAxes, ha="right", va="bottom", fontsize=8.5,
+        # Header band (Dongmin 26 Nov, "better visuals"): ticker and name left, price and today's
+        # change right, the verdict as a filled pill, the report-style chips beside it.
+        prev = (d.get("c") or [None])[-1]
+        chg = (ev["px"] / prev - 1) * 100 if prev else None
+        cc = "#2e7d32" if (chg or 0) > 0 else "#c62828" if (chg or 0) < 0 else "#546e7a"
+        hd.text(0, 1.0, label(t), fontsize=21, fontweight="bold", color="#263238", va="top", transform=hd.transAxes)
+        hd.text(0, 0.47, name[:60], fontsize=9.5, color="#78909c", va="top", transform=hd.transAxes)
+        hd.text(1, 1.0, money(t, ev["px"]), fontsize=21, fontweight="bold", color="#263238", va="top",
+                ha="right", transform=hd.transAxes)
+        if chg is not None:
+            hd.text(1, 0.47, f"{'▲' if chg > 0 else '▼' if chg < 0 else '■'} {chg:+.2f}% today", fontsize=10.5,
+                    fontweight="bold", color=cc, va="top", ha="right", transform=hd.transAxes)
+        fig.canvas.draw()
+        rnd = fig.canvas.get_renderer()
+        pill = hd.text(0, -0.08, f"  {headline}  ", fontsize=10, fontweight="bold", color="white", va="bottom",
+                       transform=hd.transAxes, bbox=dict(boxstyle="round,pad=0.4,rounding_size=0.8", fc=color, ec=color))
+        x = pill.get_window_extent(renderer=rnd).transformed(hd.transAxes.inverted()).x1 + 0.03
+        nt = hd.text(x, -0.08, note, fontsize=9.5, color=color, va="bottom", transform=hd.transAxes)
+        if chips:
+            x = 1.0
+            for text, col, filled in reversed([c for c in chips if c and c[0] not in headline]):
+                tt = hd.text(x, -0.08, text, transform=hd.transAxes, ha="right", va="bottom", fontsize=8.5,
                              fontweight="bold", color="white" if filled else col,
                              bbox=dict(boxstyle="round,pad=0.35,rounding_size=0.9", fc=col if filled else "white",
                                        ec=col, lw=1.1))
-                bb = tt.get_window_extent(renderer=rnd).transformed(ax.transAxes.inverted())
-                x = bb.x0 - 0.035
-        ax.text(0, 1.02, f"{headline}  ·  {note}", transform=ax.transAxes, fontsize=11,
-                color=color, fontweight="bold")
-        ax.legend(loc="upper left", fontsize=8, frameon=False, ncol=3 if not fan else 4)
+                x = tt.get_window_extent(renderer=rnd).transformed(hd.transAxes.inverted()).x0 - 0.035
+            if nt.get_window_extent(renderer=rnd).transformed(hd.transAxes.inverted()).x1 > x:
+                nt.set_visible(False)        # no room beside the chips: the pill alone carries it
+        hl, ll = ax.get_legend_handles_labels()      # under the chart, so it never covers the price
+        fig.legend(hl, ll, loc="lower left", bbox_to_anchor=(0.02, -0.005), fontsize=7.5, frameon=False,
+                   ncol=len(ll), labelcolor="#546e7a", handlelength=1.6, columnspacing=1.2)
         if target is not None:   # keep the target line on the chart even if it is outside recent prices
             y0, y1 = ax.get_ylim()
             ax.set_ylim(min(y0, target * 0.99), max(y1, target * 1.01))
         ax.set_ylabel(f"{FX[t]['quote']} per 1 {FX[t]['base']}" if is_fx(t) else "price ($)")
-        ax.grid(alpha=0.18)
+        ax.grid(alpha=0.12)
         ax.margins(x=0.02)
         plt.setp(ax.get_xticklabels(), visible=False)
         r = h["rsi"] + [ev["rsi"]]
@@ -1453,7 +1433,7 @@ def price_chart(t, name, d, ev, headline, color, note, shade=0, target=None, tar
         _ticks(ax2, h["dates"], n)
         if fan:
             ax.set_xlim(-1, xt + fan["horizon"] + 4)
-        fig.text(0.01, 0.005, "Not financial advice. Nothing has been traded.", fontsize=7, color="#888")
+        fig.text(0.99, -0.03, "Not financial advice. Nothing has been traded.", fontsize=7, color="#888", ha="right")
         buf = io.BytesIO()
         fig.savefig(buf, format="png", bbox_inches="tight", facecolor="white")
         plt.close(fig)
@@ -2239,15 +2219,14 @@ def fires_settled(t, side, closes, usdsgd, state, day):
 
 def settled_message(kind, t, side, st, r, iv, sv, closes, usdsgd, state, day):
     ev, ref = _as_ev(t, st), _as_ref(st)
-    head = {"CONFIRMED": f"✅ <b>CONFIRMED at close — {label(t)}</b>",
-            "FADED": f"⚠️ <b>FADED by close — {label(t)}</b>",
-            "CLOSE": f"🔔 <b>CLOSE SIGNAL (not seen intraday) — {label(t)}</b>",
-            "CONFLICT": f"⚖️ <b>CONFLICT at close — {label(t)}</b>"}[kind]
     verdict = st["signal"] if kind in ("CONFIRMED", "CLOSE") else side
+    mark, what = {"CONFIRMED": ("✅", f"{verdict} CONFIRMED AT CLOSE"), "FADED": ("⚪", f"{side} FADED BY CLOSE"),
+                  "CLOSE": ("🔔", f"{verdict} AT CLOSE"), "CONFLICT": ("⚖️", "CONFLICT AT CLOSE")}[kind]
     combo = lambda l: (st[f"{l}_state"] if st[f"{l}_state"] in ("BUY", "SELL") else "—")
     chip_fire = None
-    lines = [head, esc(full_name(t)) + (f" · also covers {', '.join(esc(label(a)) for a in twins_of(t))}" if twins_of(t) else ""),
-             f"<b>Official close {money(t, st['close'])}</b> · {st['bar_date']} · evening check", ""]
+    lines = head_block(mark, what, t, st["close"], (st.get("prev") or {}).get("close"),
+                       full_name(t) + (f" · also covers {', '.join(label(a) for a in twins_of(t))}" if twins_of(t) else ""),
+                       [legs_line(st["k_state"], st["r_state"])], f"official close of {st['bar_date']} · evening check")
     if kind == "CONFLICT":
         lines += [f"Price range <b>{combo('k')}</b> + Momentum <b>{combo('r')}</b>  →  <b>the two measures disagree</b>", "",
                   why("k", st["k_state"], ref, ev), "", why("r", st["r_state"], ref, ev), "",

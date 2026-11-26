@@ -88,8 +88,8 @@ def test_evening_check_confirmed_and_faded(make_watch):
     state = {"day": "2026-11-04", "sent": ["GLDM:BUY:k", "QQQ:BUY:k"], "pending": {}, "obs": {}}
     msgs = w.settled_pass(state)
     heads = {t.split("\n")[0]: t for t, _ in msgs}
-    conf = [t for h, t in heads.items() if "CONFIRMED at close" in h and "GLDM" in h]
-    fade = [t for h, t in heads.items() if "FADED by close" in h and "QQQ" in h]
+    conf = [t for h, t in heads.items() if "CONFIRMED AT CLOSE" in h and "GLDM" in h]
+    fade = [t for h, t in heads.items() if "FADED BY CLOSE" in h and "QQQ" in h]
     assert conf and fade, list(heads)
     assert "Fires:" in conf[0]
     assert "KNIFE-EDGE" in fade[0] and "below by 0.0001%" in fade[0]
@@ -170,30 +170,20 @@ def test_market_wide_notes_need_us_stocks_and_the_benchmark_and_come_once_a_day(
     assert w.decide([], [mk("anom:group5:AI", "group5")], state, "REGULAR") == []
 
 
-def test_one_reading_goes_out_as_one_message_plus_one_album(make_watch, monkeypatch):
-    """25 Nov: 'why are you sending separate msgs for the stock and crypto'. Everything found in one
-    reading is now one text, then the charts as one album."""
+def test_every_alert_goes_out_on_its_own_with_its_chart(make_watch, monkeypatch):
+    """26 Nov: 'dont send merged msgs, send individually'. One message per alert, each with its chart;
+    a long one is the chart with its header as the caption, then the rest right under it."""
     w, m = make_watch(tickers=("QQQ", "BOTZ"))
-    m.now = et(2026, 11, 23, 9, 0)
-    texts, albums, photos = [], [], []
+    texts, photos = [], []
     monkeypatch.setattr(w, "send", lambda t: texts.append(t))
-    monkeypatch.setattr(w, "send_album", lambda items: (albums.append(items) or True))
     monkeypatch.setattr(w, "send_photo", lambda png, cap: (photos.append(cap) or True))
-    outbox = [("🟢⚪ <b>BUY — NVDA</b>\nNVIDIA Corp\nWhy...", b"png1"),
-              ("🟢⚪ <b>BUY — BTC-USD</b>\nBitcoin\nWhy...", b"png2"),
-              ("⚠️ <b>Unusual move — ETH-USD</b>\nDown 6%.", None)]
+    long_body = "Why...\n" + "x" * 1200
+    outbox = [(f"🟢⚪ <b>BUY SIGNAL · NVDA</b>\nNVIDIA Corp\n{w.RULE}\n\n{long_body}", b"png1"),
+              ("🟢⚪ <b>BUY SIGNAL · BTC-USD</b>\nBitcoin", b"png2"),
+              ("🔴▼ <b>UNUSUAL DROP · ETH-USD</b>\nDown 6%.", None)]
     w.notify_all(outbox)
-    assert len(texts) == 1 and texts[0].startswith("📣 <b>3 alerts in this reading</b>")
-    assert "BUY — NVDA" in texts[0] and "BUY — BTC-USD" in texts[0] and "Unusual move — ETH-USD" in texts[0]
-    assert albums == [[("🟢⚪ BUY — NVDA", b"png1"), ("🟢⚪ BUY — BTC-USD", b"png2")]] and photos == []
-    # A single finding still goes out as before (chart with its explanation as the caption).
-    w.notify_all([("⚠️ <b>Unusual move — XLV</b>\nUp 3%.", b"png")])
-    assert photos == ["⚠️ <b>Unusual move — XLV</b>\nUp 3%."]
-    # Over Telegram's limit the text splits between alerts, never inside one.
-    long = [(f"<b>T{i}</b>\n" + "x" * 900, None) for i in range(6)]
-    plan = w.batch_plan(long)
-    assert len(plan["texts"]) == 2 and all(w.plain_len(t) <= 3900 for t in plan["texts"])
-    assert sum(t.count("<b>T") for t in plan["texts"]) == 6
+    assert photos == ["🟢⚪ <b>BUY SIGNAL · NVDA</b>\nNVIDIA Corp", "🟢⚪ <b>BUY SIGNAL · BTC-USD</b>\nBitcoin"]
+    assert texts == [long_body, "🔴▼ <b>UNUSUAL DROP · ETH-USD</b>\nDown 6%."]
 
 
 def test_a_new_listing_shows_its_price_until_it_has_enough_days_for_signals(make_watch):
@@ -262,7 +252,7 @@ def test_signal_shows_the_algorithm_with_its_numbers_and_the_panel(make_watch):
     res, sess, _ = w.poll(state)
     text = next(t for t, _ in w.decide(res[0], [], state, sess) if "GLDM" in t.split("\n")[0])
     assert "My algorithm (Rule A)" in text and "Price range BUY" in text and "✅" in text
-    assert "Fires? <b>" in text.split("\n")[0]
+    assert "SIGNAL · GLDM" in text.split("\n")[0] and "Fires? <b>" in text.split("━")[0]
     assert "Investor panel" in text and "leans bullish" in text and "agrees with this BUY" in text
     assert "/panel_gldm" in text and "Strongest view, Buffett" in text
     assert text.index("My algorithm") < text.index("Investor panel") < text.index("Your plan")
@@ -270,11 +260,11 @@ def test_signal_shows_the_algorithm_with_its_numbers_and_the_panel(make_watch):
 
 def test_unusual_moves_show_their_direction_in_colour(make_watch):
     w, m = make_watch(tickers=("QQQ", "GLDM"))
-    rows = [{"t": "GLDM", "d": {"c": [80.0]}, "ev": {}, "sess": "REG"}]
+    rows = [{"t": "GLDM", "px": 83.2, "d": {"c": [80.0]}, "ev": {}, "sess": "REG"}]
     up = {"ticker": "GLDM", "kind": "move", "dir": 1, "title": "Unusual move — GLDM", "chart_head": "x",
           "note": "up 4.0% today", "text": "<b>$83.20</b>, up <b>4.0%</b> today."}
     w.odds_text = lambda *a, **k: (None, [])
     t, _ = w.anomaly_message(up, rows, "REG")
-    assert t.startswith("🟢▲ <b>Unusual move") and "🟢▲ up <b>4.0%" in t
+    assert t.startswith("🟢▲ <b>UNUSUAL RISE · GLDM") and "+4.00%" in t and "🟢▲ up <b>4.0%" in t
     t, _ = w.anomaly_message(dict(up, dir=-1, text="<b>$76.80</b>, down <b>4.0%</b> today."), rows, "REG")
-    assert t.startswith("🔴▼ <b>Unusual move") and "🔴▼ down <b>4.0%" in t
+    assert t.startswith("🔴▼ <b>UNUSUAL DROP · GLDM") and "🔴▼ down <b>4.0%" in t
