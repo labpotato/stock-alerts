@@ -962,6 +962,57 @@ def near_buy_message(o, sess, lvl, leg):
     return "\n".join(lines), png
 
 
+def touched(o):
+    """Which buy-side lines a ticker touched at this reading (Dongmin 26 Nov): 'k' = the price at or
+    under the bottom of its normal range, 'r' = the momentum score at or under 30. Only a fresh touch
+    counts: the last settled close was still above that line, so a ticker sitting under it for days
+    is told once, on the day it first got there."""
+    t, ev, d = o["t"], o["ev"], o["d"]
+    if is_fx(t) or not d.get("c"):
+        return []
+    out = []
+    if ev["px"] <= ev["lo"] and d["c"][-1] > d["lo"]:
+        out.append("k")
+    if ev["rsi"] <= 30 < d["rsi"]:
+        out.append("r")
+    return out
+
+
+def touch_message(o, legs, sess):
+    t, ev, d = o["t"], o["ev"], o["d"]
+    tb = o.get("tb") or {}
+    both = len(legs) == 2
+    kind = "TOUCHED BOTH LINES" if both else "TOUCHED THE BOTTOM LINE" if legs == ["k"] else "MOMENTUM UNDER 30"
+    st = lambda l: "🔵 <b>touched</b>" if l in legs else "⚪ <b>—</b>"
+    lines = head_block("🔵", kind, t, ev["px"], d["c"][-1], full_name(t, o),
+                       [f"Bottom line {st('k')} · Momentum 30 {st('r')} · Fires? <b>Not yet</b>"],
+                       f"{when_text()} · {sess_text(t, sess)}")
+    if "k" in legs:
+        lines.append(f"📉 <b>Bottom line touched.</b> The price ({money(t, ev['px'])}) is at or under the bottom of its "
+                     f"normal range ({money(t, ev['lo'])}); yesterday it closed above it ({money(t, d['c'][-1])} vs "
+                     f"{money(t, d['lo'])}). Unusually low for it.")
+        if tb.get("K"):
+            lines.append(f"Your BUY comes when the 3-day average climbs back over the bottom line: about "
+                         f"<b>{money(t, tb['K'])}</b> ({(tb['K'] / ev['px'] - 1) * 100:+.1f}% from here).")
+        lines.append("")
+    if "r" in legs:
+        lines.append(f"🌡️ <b>Momentum touched 30.</b> The score is {ev['rsi']:.1f} (it was {d['rsi']:.1f} at the last "
+                     f"close): sold off hard.")
+        if tb.get("R"):
+            lines.append(f"Your BUY comes when it climbs back over 30: about <b>{money(t, tb['R'])}</b> "
+                         f"({(tb['R'] / ev['px'] - 1) * 100:+.1f}% from here).")
+        lines.append("")
+    lines += [f"<b>Not a signal yet.</b> If the BUY comes, your plan: {plan_text(t, 'BUY')}", ""]
+    for a in twins_of(t):
+        lines += [f"🔗 {esc(label(a))} tracks the same index, so this covers it too.", ""]
+    box, olines = odds_text(t, d)
+    lines += (olines + [""] if olines else []) + ["<i>A heads-up. Nothing has been traded.</i>"]
+    lvl = tb.get("K") if "k" in legs else tb.get("R")
+    png = price_chart(t, full_name(t, o), d, ev, "Touched the bottom" if "k" in legs else "Momentum under 30",
+                      "#1565c0", "not a signal yet", target=lvl, target_label="BUY around", odds=box)
+    return "\n".join(lines).replace("\n\n\n", "\n\n"), png
+
+
 def near_buy(rows, sess):
     """On request: one message per ticker within reach of a BUY, nearest first."""
     lim = CFG.get("near_pct", 5.0)
@@ -1566,7 +1617,7 @@ def intraday_keys(state, day=None):
         sent = state["last_day"].get("sent", [])
     else:
         sent = []
-    return [k for k in sent if not k.startswith("anom:") and ":MIXED" not in k]
+    return [k for k in sent if not k.startswith("anom:") and ":MIXED" not in k and ":TOUCH:" not in k]
 
 
 def write_status(rows, sess, alerts, errs, state=None):
@@ -1971,6 +2022,20 @@ def decide(rows, alerts, state, sess):
                             fx_chart(o, side) if is_fx(t) else None))
             else:
                 out.append(signal_message(o, side, legs, earlier, o.get("sess", sess)))
+
+    # 2b. Touches (Dongmin 26 Nov): the price reaching the bottom line, or momentum reaching 30.
+    #     Once per ticker and line per settled bar; both at once make one message.
+    if CFG.get("touch_alerts", True):
+        for o in rows:
+            t = o["t"]
+            if (CFG.get("same_as") or {}).get(t) in by_t:
+                continue                                  # IQQ: reported under QQQ
+            legs = [l for l in touched(o) if f"{t}:TOUCH:{l}" not in sent and fired.get(f"{t}:TOUCH:{l}") != bar(t)]
+            if not legs:
+                continue
+            for l in legs:
+                record(f"{t}:TOUCH:{l}", t)
+            out.append(touch_message(o, legs, o.get("sess", sess)))
 
     # 3. Unusual movement: at most one message per ticker per day (Dongmin: one message per
     #    ticker). A 1-day and a 3-day finding in the same reading become one message.

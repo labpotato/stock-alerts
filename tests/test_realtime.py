@@ -203,6 +203,7 @@ def test_a_new_listing_shows_its_price_until_it_has_enough_days_for_signals(make
 
 
 def _twin_rows(w, m, monkeypatch):
+    w.CFG["touch_alerts"] = False      # these tests are about signals only
     real = m.chart
     w.chart = lambda t, *a, **k: real("QQQ" if t == "IQQ" else t, *a, **k)
     state = {"sent": [], "pending": {}, "obs": {}}
@@ -268,3 +269,26 @@ def test_unusual_moves_show_their_direction_in_colour(make_watch):
     assert t.startswith("🟢▲ <b>UNUSUAL RISE · GLDM") and "+4.00%" in t and "🟢▲ up <b>4.0%" in t
     t, _ = w.anomaly_message(dict(up, dir=-1, text="<b>$76.80</b>, down <b>4.0%</b> today."), rows, "REG")
     assert t.startswith("🔴▼ <b>UNUSUAL DROP · GLDM") and "🔴▼ down <b>4.0%" in t
+
+
+def test_touching_the_bottom_line_or_rsi_30_is_told_once(make_watch):
+    """26 Nov: tell me when a ticker touches the bottom line, and when momentum touches 30."""
+    w, m = make_watch(tickers=("QQQ", "GLDM"))
+    state = {"sent": [], "pending": {}, "obs": {}}
+    m.now, m.prices = et(2026, 11, 4, 15, 50), {"GLDM": 80.38}
+    res, sess, _ = w.poll(state)
+    o = next(x for x in res[0] if x["t"] == "GLDM")
+    o["d"] = dict(o["d"], c=[78.0, 79.0, 80.0], lo=79.0, rsi=34.0)      # yesterday above both lines
+    o["ev"] = dict(o["ev"], px=77.0, lo=78.0, rsi=29.0, k="WATCH BUY", r="NONE")
+    o["tb"] = {"K": 79.5, "R": 78.2}
+    rows = [o]
+    msgs = w.decide(rows, [], state, sess)
+    touch = [t for t, _ in msgs if "TOUCHED BOTH LINES · GLDM" in t]
+    assert len(touch) == 1
+    assert "Bottom line touched" in touch[0] and "Momentum touched 30" in touch[0] and "Not a signal yet" in touch[0]
+    assert "$79.50" in touch[0] and "$78.20" in touch[0]
+    assert not [t for t, _ in w.decide(rows, [], state, sess) if "TOUCHED" in t]     # once
+    assert not [k for k in w.intraday_keys(state) if "TOUCH" in k]                     # not a real-time signal
+    # Already under the line at yesterday's close: not a fresh touch.
+    o2 = dict(o, d=dict(o["d"], c=[78.0, 77.5, 77.0], lo=79.0, rsi=25.0))
+    assert w.touched(o2) == []

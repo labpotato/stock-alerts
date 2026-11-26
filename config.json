@@ -193,5 +193,7 @@
   "same_as": {
     "IQQ": "QQQ"
   },
-  "_same_as_note": "Same index, one report: a signal or unusual move on the key is sent under the value (Dongmin 2026-11-25)."
+  "_same_as_note": "Same index, one report: a signal or unusual move on the key is sent under the value (Dongmin 2026-11-25).",
+  "touch_alerts": true,
+  "_touch_alerts_note": "Heads-up when a ticker first touches the bottom of its range or momentum 30 (Dongmin 2026-11-26)."
 }
