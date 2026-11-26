@@ -55,7 +55,7 @@ def test_d_second_measure_later_the_same_day_is_a_short_strong_upgrade(make_watc
     msgs = w.decide([o], [], state, "REGULAR")
     assert len(msgs) == 1
     text, png = msgs[0]
-    assert text.startswith("🔴🔴 <b>Now STRONG SELL — XLF</b>") and png is None
+    assert text.startswith("🔴🔴 <b>NOW STRONG SELL · XLF</b>") and png is None
     assert "agreeing with momentum earlier today" in text
     assert len(text) < 600
     assert "XLF:SELL:k" in state["sent"]
