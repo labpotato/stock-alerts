@@ -1,8 +1,8 @@
 {
  "schema": 2,
- "generated_utc": "2026-11-27T23:51:05+00:00",
+ "generated_utc": "2026-11-28T00:01:05+00:00",
  "session": "POST",
- "settled_close_date": "2026-11-25",
+ "settled_close_date": "2026-11-26",
  "tickers": {
   "VOO": {
    "label": "VOO",
@@ -387,47 +387,47 @@
   "BTC-USD": {
    "label": "BTC-USD",
    "kind": "stock",
-   "price": 59831.9,
-   "prev_close": 60378.2,
-   "day_pct": -0.9,
-   "rsi": 26.7,
+   "price": 59879.4,
+   "prev_close": 60494.7,
+   "day_pct": -1.02,
+   "rsi": 27.0,
    "keltner": "NONE",
    "momentum": "WATCH BUY",
-   "upper": 71383.4,
-   "lower": 59219.6,
-   "ma3": 59986.0,
+   "upper": 70353.6,
+   "lower": 59330.8,
+   "ma3": 60250.8,
    "buy_trigger": {
-    "R": 61012.2
+    "R": 60948.4
    },
    "sell_trigger": {},
-   "nearest_trigger_pct": 2.0,
+   "nearest_trigger_pct": 1.8,
    "sigma_pct": 1.601,
-   "z": -0.57,
-   "margin_k_pct": 1.294,
-   "margin_r_pts": 3.343,
+   "z": -0.64,
+   "margin_k_pct": 1.5505,
+   "margin_r_pts": 3.034,
    "knife_edge": false
   },
   "ETH-USD": {
    "label": "ETH-USD",
    "kind": "stock",
-   "price": 1659.37,
-   "prev_close": 1690.77,
-   "day_pct": -1.86,
-   "rsi": 28.1,
+   "price": 1662.65,
+   "prev_close": 1687.74,
+   "day_pct": -1.49,
+   "rsi": 28.2,
    "keltner": "NONE",
    "momentum": "WATCH BUY",
-   "upper": 2060.8,
-   "lower": 1631.75,
-   "ma3": 1675.94,
+   "upper": 2026.22,
+   "lower": 1636.24,
+   "ma3": 1680.39,
    "buy_trigger": {
-    "R": 1695.84
+    "R": 1692.81
    },
    "sell_trigger": {},
-   "nearest_trigger_pct": 2.2,
+   "nearest_trigger_pct": 1.8,
    "sigma_pct": 1.578,
-   "z": -1.18,
-   "margin_k_pct": 2.7084,
-   "margin_r_pts": 1.898,
+   "z": -0.94,
+   "margin_k_pct": 2.698,
+   "margin_r_pts": 1.839,
    "knife_edge": false
   }
  },
